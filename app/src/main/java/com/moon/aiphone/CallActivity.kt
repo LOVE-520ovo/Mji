@@ -762,7 +762,7 @@ $langBlock
                 val body = JSONObject().apply {
                     put("model", model)
                     put("messages", messages)
-                    put("max_tokens", 200)
+                    put("max_tokens", 2048)
                 }.toString().toRequestBody("application/json".toMediaTypeOrNull())
 
                 val req = Request.Builder().url(apiUrl)
@@ -877,7 +877,7 @@ $callText
 
                 val body = JSONObject().apply {
                     put("model", model)
-                    put("max_tokens", 150)
+                    put("max_tokens", 800)
                     put("messages", JSONArray().apply {
                         put(JSONObject().apply { put("role", "user"); put("content", prompt) })
                     })
