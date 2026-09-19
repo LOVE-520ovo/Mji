@@ -210,6 +210,47 @@
                         android:layout_marginTop="8dp"/>
                     <!-- 默认声音 / 语言字段已移除：音色与语言改在「角色设置」里按角色单独填写 -->
                 </LinearLayout>
+                <!-- ===== MiniMax TTS ===== -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="16dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="MiniMax TTS"
+                            android:textSize="16sp"/>
+                        <Switch
+                            android:id="@+id/switchUseMinimax"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+                    </LinearLayout>
+                    <EditText
+                        android:id="@+id/editMinimaxKey"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="MiniMax API Key"
+                        android:layout_marginTop="8dp"/>
+                    <EditText
+                        android:id="@+id/editMinimaxVoice"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="默认音色ID（如 male-qn-qingse，可被角色音色覆盖）"
+                        android:layout_marginTop="8dp"/>
+                    <EditText
+                        android:id="@+id/editMinimaxModel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="模型（如 speech-02-hd / speech-2.8-hd）"
+                        android:layout_marginTop="8dp"/>
+                </LinearLayout>
             </LinearLayout>
             <TextView
                 android:layout_width="wrap_content"
