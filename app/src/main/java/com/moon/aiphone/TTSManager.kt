@@ -61,7 +61,9 @@ class TTSManager(private val context: Context) {
     fun speak(text: String, voiceId: String = "FunAudioLLM/CosyVoice2-0.5B") {
         val pref = context.getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
         val provider = pref.getString("ttsProvider", "siliconflow") ?: "siliconflow"
-        if (provider == "guannan") {
+        if (provider == "minimax") {
+            speakMinimax(text, voiceId)
+        } else if (provider == "guannan") {
             speakGuannan(text, voiceId)
         } else {
             speakSiliconFlow(text, voiceId)
@@ -264,6 +266,92 @@ class TTSManager(private val context: Context) {
                 try { audioFile?.delete() } catch (_: Exception) {}
             }
         }
+    }
+
+    // ========== MiniMax（T2A v2, https://api.minimax.cn/v1/t2a_v2）==========
+    private fun speakMinimax(text: String, voiceId: String) {
+        thread {
+            var audioFile: File? = null
+            try {
+                val pref = context.getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
+                val apiKey = pref.getString("minimaxTtsApiKey", "") ?: ""
+                if (apiKey.isBlank()) { Log.e("TTS_DEBUG", "minimaxTtsApiKey为空"); return@thread }
+                val model = pref.getString("minimaxTtsModel", "speech-02-hd")?.trim().orEmpty().ifBlank { "speech-02-hd" }
+                val defaultVoice = pref.getString("minimaxVoice", "male-qn-qingse")?.trim().orEmpty().ifBlank { "male-qn-qingse" }
+                val configuredVoice = voiceId.trim()
+                val voice = configuredVoice.takeUnless {
+                    it.isBlank() || it == "FunAudioLLM/CosyVoice2-0.5B"
+                } ?: defaultVoice
+                val cleanText = sanitizeSpeechText(text)
+                if (cleanText.isBlank() || !hasSpeakableContent(cleanText)) {
+                    Log.e("TTS_DEBUG", "cleanText无可朗读内容(空或纯标点)，跳过")
+                    return@thread
+                }
+                val conn = (URL("https://api.minimax.cn/v1/t2a_v2").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Authorization", "Bearer $apiKey")
+                    setRequestProperty("Content-Type", "application/json")
+                    connectTimeout = 20000
+                    readTimeout = 60000
+                    doOutput = true
+                }
+                val voiceSetting = JSONObject().apply {
+                    put("voice_id", voice); put("speed", 1); put("vol", 1); put("pitch", 0)
+                }
+                val audioSetting = JSONObject().apply {
+                    put("sample_rate", 32000); put("bitrate", 128000); put("format", "mp3"); put("channel", 1)
+                }
+                val payload = JSONObject().apply {
+                    put("model", model)
+                    put("text", cleanText)
+                    put("stream", false)
+                    put("voice_setting", voiceSetting)
+                    put("audio_setting", audioSetting)
+                    put("output_format", "hex")
+                }.toString()
+                conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                val body = if (code == 200) {
+                    conn.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                    Log.e("TTS_DEBUG", "MiniMax失败 code=$code err=$err")
+                    return@thread
+                }
+                val json = JSONObject(body)
+                val base = json.optJSONObject("base_resp")
+                if (base != null && base.optInt("status_code", 0) != 0) {
+                    Log.e("TTS_DEBUG", "MiniMax返回错误: ${base.optString("status_msg")}")
+                    return@thread
+                }
+                val audioHex = json.optJSONObject("data")?.optString("audio", "") ?: ""
+                if (audioHex.isBlank()) { Log.e("TTS_DEBUG", "MiniMax audio为空"); return@thread }
+                val audioBytes = hexToBytes(audioHex)
+                if (audioBytes.isEmpty()) { Log.e("TTS_DEBUG", "MiniMax hex解码失败"); return@thread }
+                audioFile = File(context.cacheDir, "ai_voice_${System.currentTimeMillis()}.mp3")
+                FileOutputStream(audioFile).use { it.write(audioBytes) }
+                if (!audioFile.exists() || audioFile.length() <= 0L) {
+                    Log.e("TTS_DEBUG", "音频文件为空")
+                    return@thread
+                }
+                playFile(audioFile)
+            } catch (e: Exception) {
+                Log.e("TTS_DEBUG", "speak异常(MiniMax): ${e.message}")
+                try { audioFile?.delete() } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun hexToBytes(hex: String): ByteArray {
+        if (hex.length % 2 != 0) return ByteArray(0)
+        val out = ByteArray(hex.length / 2)
+        for (i in out.indices) {
+            val hi = Character.digit(hex[i * 2], 16)
+            val lo = Character.digit(hex[i * 2 + 1], 16)
+            if (hi < 0 || lo < 0) return ByteArray(0)
+            out[i] = ((hi shl 4) + lo).toByte()
+        }
+        return out
     }
 
     // ========== 公用播放逻辑（两个服务器都用这一套）==========
