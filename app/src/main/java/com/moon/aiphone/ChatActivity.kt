@@ -1805,6 +1805,8 @@ $interactiveFeatureRules
                     if (replyStatus.isNotBlank()) setCharacterStatus(replyStatus)
 
                     var emittedMessages = 0
+                    var imgEmittedThisReply = false
+                    val randomImgWanted = (1..100).random() <= 10
                     for (block in blocks) {
                         // ★ 解析：标记更宽容（内心/台词/翻译/译都认），翻译一路抓到结尾
                         val parsed = parseReplyBlock(block, isChinese, keepActions = whisperOn)
@@ -1879,17 +1881,17 @@ $interactiveFeatureRules
                         val imgEnabled = sharedPref.getBoolean("imgEnable_chat", false)
                         if (imgEnabled) {
                             val triggerWords = listOf(
-                                "拍","拍张","拍一张","发张照片","发个图","照片发我","报备",
+                                "拍张","拍一张","发张照片","发个图","照片发我","报备",
                                 "在哪呢","在干嘛","干嘛呢","发图来","图来","让我看看",
-                                "你在哪","你在哪里","吃的什么","吃了什么","你今天","你现在",
+                                "你在哪","你在哪里","吃的什么","吃了什么",
                                 "你家","自拍","发张","发一张","发个照片","看看你","给我看看","show me","send photo","take a pic"
                             )
                             val lastUserContent = msgList.lastOrNull { it.isFromMe && !it.isSystem }?.content ?: ""
                             val aiWantsImage = dialog.contains("[IMAGE:", ignoreCase = true) ||
                                     dialog.contains("[图片：") || dialog.contains("[图片:")
-                            val shouldGenImg = aiWantsImage || triggerWords.any { lastUserContent.contains(it, ignoreCase = true) } || (1..100).random() <=10
-
+                            val shouldGenImg = !imgEmittedThisReply && (aiWantsImage || triggerWords.any { lastUserContent.contains(it, ignoreCase = true) } || randomImgWanted)
                             if (shouldGenImg) {
+                                imgEmittedThisReply = true
                                 var cachedPersona = ""
                                 var cachedAppearance = ""
                                 try {
