@@ -147,6 +147,17 @@ class SettingsActivity : AppCompatActivity() {
 
         switchUseGuannan.isChecked = sharedPref.getString("ttsProvider", "siliconflow") == "guannan"
         editGuannanKey.setText(sharedPref.getString("guannanApiKey", ""))
+        // ── MiniMax TTS：读取已保存的设置 ──
+        val switchUseMinimax = findViewById<android.widget.Switch>(R.id.switchUseMinimax)
+        val editMinimaxKey = findViewById<EditText>(R.id.editMinimaxKey)
+        val editMinimaxVoice = findViewById<EditText>(R.id.editMinimaxVoice)
+        val editMinimaxModel = findViewById<EditText>(R.id.editMinimaxModel)
+        switchUseMinimax.isChecked = sharedPref.getString("ttsProvider", "siliconflow") == "minimax"
+        editMinimaxKey.setText(sharedPref.getString("minimaxTtsApiKey", ""))
+        editMinimaxVoice.setText(sharedPref.getString("minimaxVoice", "male-qn-qingse"))
+        editMinimaxModel.setText(sharedPref.getString("minimaxTtsModel", "speech-02-hd"))
+        switchUseGuannan.setOnCheckedChangeListener { _, isChecked -> if (isChecked) switchUseMinimax.isChecked = false }
+        switchUseMinimax.setOnCheckedChangeListener { _, isChecked -> if (isChecked) switchUseGuannan.isChecked = false }
         editGuannanUrl.setText(sharedPref.getString(
             "guannanApiUrl", "http://47.83.255.223:8080/guannan"
         ))
@@ -315,7 +326,10 @@ class SettingsActivity : AppCompatActivity() {
             sharedPref.edit().putString("ttsApiKey", ttsKey).apply()
 // 保存朋友服务器的设置
             sharedPref.edit()
-                .putString("ttsProvider", if (switchUseGuannan.isChecked) "guannan" else "siliconflow")
+                .putString("ttsProvider", if (switchUseMinimax.isChecked) "minimax" else if (switchUseGuannan.isChecked) "guannan" else "siliconflow")
+                .putString("minimaxTtsApiKey", editMinimaxKey.text.toString().trim())
+                .putString("minimaxVoice", editMinimaxVoice.text.toString().trim().ifBlank { "male-qn-qingse" })
+                .putString("minimaxTtsModel", editMinimaxModel.text.toString().trim().ifBlank { "speech-02-hd" })
                 .putString("guannanApiKey", editGuannanKey.text.toString().trim())
                 .putString("guannanApiUrl", editGuannanUrl.text.toString().trim())
                 .apply()
