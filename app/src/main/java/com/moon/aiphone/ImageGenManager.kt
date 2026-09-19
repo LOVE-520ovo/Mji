@@ -121,6 +121,7 @@ object ImageGenManager {
             }
 
             isReplicate -> if (base.endsWith("/predictions")) base else "$base/predictions"
+            base.contains("tencentmaas", ignoreCase = true) -> (if (base.endsWith("/v1")) base else "$base/v1") + "/wand/hunyuan-image/v3-generation"
 
             base.endsWith("/images/generations") -> base
             base.contains("/images/generations") -> base.substringBefore("/images/generations") + "/images/generations"
