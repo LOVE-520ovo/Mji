@@ -290,7 +290,7 @@ object ImageGenManager {
 
                 val promptGenBody = JSONObject().apply {
                     put("model", chatModel)
-                    put("max_tokens", 150)
+                    put("max_tokens",1500)
                     put("messages", JSONArray().apply {
                         put(JSONObject().apply {
                             put("role", "user")

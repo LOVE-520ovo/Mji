@@ -510,7 +510,7 @@ class ChatActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
-        fun onSend(text: String) {
+        fun onSend(text: String) { if (text.trim().startsWith("/advance")) { runOnUiThread { handleVirtualTimeCommand(text.trim()) }; return }
             runOnUiThread { handleSend(text) }
         }
 
@@ -1305,6 +1305,60 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
         msgList.add(notice); addMessageToWebView(notice); saveMsgToDb(notice, 1, "")
     }
 
+    // —— 虚拟时间（时间线）——
+    private fun vtOffsetMs(): Long = getSharedPreferences("AppConfig", Context.MODE_PRIVATE).getLong("virtualOffsetMs", 0L)
+    private fun vtNow(): java.util.Date = java.util.Date(System.currentTimeMillis() + vtOffsetMs())
+    private fun vtHour(): Int { val c = java.util.Calendar.getInstance(); c.time = vtNow(); return c.get(java.util.Calendar.HOUR_OF_DAY) }
+    private fun vtFormat(ms: Long): String = SimpleDateFormat("yyyy年MM月dd日 EEEE HH:mm", Locale.CHINA).format(java.util.Date(ms))
+    private fun vtFmtOffset(ms: Long): String {
+        if (ms == 0L) return "0"
+        var rest = Math.abs(ms)
+        val d = rest / 86400000L
+        rest %= 86400000L
+        val h = rest / 3600000L
+        rest %= 3600000L
+        val m = rest / 60000L
+        val sign = if (ms > 0) "+" else "-"
+        var s = sign
+        if (d > 0) s += d.toString() + "天"
+        if (h > 0) s += h.toString() + "小时"
+        if (m > 0) s += m.toString() + "分钟"
+        if (s == sign) s = "0"
+        return s
+    }
+
+    // 处理 /advance 指令：查看/推进/重置虚拟时间
+    private fun handleVirtualTimeCommand(cmd: String) {
+        val pref = getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
+        val arg = cmd.trim().removePrefix("/advance").trim()
+        val off = vtOffsetMs()
+        if (arg.isEmpty()) {
+            Toast.makeText(this, "⏱ 当前虚拟时间：" + vtFormat(System.currentTimeMillis() + off) + "（偏移 " + vtFmtOffset(off) + "）", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (arg.equals("reset", true)) {
+            pref.edit().putLong("virtualOffsetMs", 0L).apply()
+            Toast.makeText(this, "⏱ 已重置为真实时间", Toast.LENGTH_LONG).show()
+            return
+        }
+        var delta = 0L
+        for (m in Regex("([0-9]+)([mhdMHD])").findAll(arg)) {
+            val n = m.groupValues[1].toLongOrNull() ?: 0L
+            delta += when (m.groupValues[2].lowercase()) {
+                "m" -> n * 60000L
+                "h" -> n * 3600000L
+                else -> n * 86400000L
+            }
+        }
+        if (delta <= 0L) {
+            Toast.makeText(this, "格式：/advance 1d 或 /advance 12h 或 /advance 30m；/advance reset 重置", Toast.LENGTH_LONG).show()
+            return
+        }
+        val newOff = off + delta
+        pref.edit().putLong("virtualOffsetMs", newOff).apply()
+        Toast.makeText(this, "⏩ 时间已推进 " + vtFmtOffset(delta) + "，当前虚拟时间：" + vtFormat(System.currentTimeMillis() + newOff), Toast.LENGTH_LONG).show()
+    }
+
     private fun handleSend(content: String) {
         val blockPref = getSharedPreferences("BlockList", Context.MODE_PRIVATE)
 
@@ -1431,8 +1485,8 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
                 val lifeContext = buildLifeContext(db)
                 val petContext = buildPetContext(db, aiId)
 
-                val nowTime = SimpleDateFormat("yyyy年MM月dd日 EEEE HH:mm", Locale.CHINA).format(Date())
-                val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                val nowTime = SimpleDateFormat("yyyy年MM月dd日 EEEE HH:mm", Locale.CHINA).format(vtNow())
+                val hour = vtHour()
                 val timeContext = when (hour) {
                     in 5..8 -> "清晨"; in 9..11 -> "上午"; in 12..13 -> "中午"
                     in 14..16 -> "下午"; in 17..18 -> "傍晚"; in 19..21 -> "晚上"
@@ -1828,12 +1882,12 @@ $interactiveFeatureRules
                                 "拍","拍张","拍一张","发张照片","发个图","照片发我","报备",
                                 "在哪呢","在干嘛","干嘛呢","发图来","图来","让我看看",
                                 "你在哪","你在哪里","吃的什么","吃了什么","你今天","你现在",
-                                "你家","show me","send photo","take a pic"
+                                "你家","自拍","发张","发一张","发个照片","看看你","给我看看","show me","send photo","take a pic"
                             )
                             val lastUserContent = msgList.lastOrNull { it.isFromMe && !it.isSystem }?.content ?: ""
                             val aiWantsImage = dialog.contains("[IMAGE:", ignoreCase = true) ||
                                     dialog.contains("[图片：") || dialog.contains("[图片:")
-                            val shouldGenImg = aiWantsImage || triggerWords.any { lastUserContent.contains(it, ignoreCase = true) }
+                            val shouldGenImg = aiWantsImage || triggerWords.any { lastUserContent.contains(it, ignoreCase = true) } || (1..100).random() <=10
 
                             if (shouldGenImg) {
                                 var cachedPersona = ""
@@ -2510,8 +2564,8 @@ $interactiveFeatureRules
                 lifeContext = buildLifeContext(db)
                 petContext = buildPetContext(db, aiId)
 
-                val nowTime = SimpleDateFormat("yyyy年MM月dd日 EEEE HH:mm", Locale.CHINA).format(Date())
-                val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                val nowTime = SimpleDateFormat("yyyy年MM月dd日 EEEE HH:mm", Locale.CHINA).format(vtNow())
+                val hour = vtHour()
                 val timeContext = when (hour) {
                     in 5..8 -> "清晨"; in 9..11 -> "上午"; in 12..13 -> "中午"
                     in 14..16 -> "下午"; in 17..18 -> "傍晚"; in 19..21 -> "晚上"
@@ -2592,12 +2646,32 @@ ${if (petContext.isNotEmpty()) "【共同宠物与近期照料】：\n${petConte
                     sendBroadcast(Intent("CYBER_NEW_MSG"))
                     // 发完消息后重新开始计时，持续催促
                     startPatienceTimer()
+                    // 25%几率主动补发一张照片
+                    if ((1..100).random() <=25) maybeSendProactiveImage(aiPersona)
                 }
             } catch (_: Exception) {}
         }.start()
     }
 
-    private fun maybeAiRecall(msg: Message) {
+    //主动发图：几率触发生成并发送一张照片
+    private fun maybeSendProactiveImage(aiPersona: String) {
+ try {
+ var aiAppearance = ""
+ try { DatabaseHelper(this).readableDatabase.query("Contacts", null, "userId=?", arrayOf(aiId), null, null, null).use { c -> if (c.moveToFirst()) aiAppearance = c.getSafeString("appearance") } } catch (_: Exception) {}
+ val recentChat = msgList.takeLast(10).filter { !it.isSystem && it.content != "正在输入..." }.joinToString("; ") { m -> if (m.isFromMe) "用户：" + m.content else aiName + "：" + m.content }
+ ImageGenManager.generateFromChatContext(context = this, aiName = aiName, aiPersona = aiPersona, aiAppearance = aiAppearance, recentChat = recentChat) { localPath, usedPrompt ->
+ if (localPath != null) runOnUiThread {
+ if (isDestroyed) return@runOnUiThread; val imgMsg = Message("【我发了一张照片：" + usedPrompt + "】", false, false, false).apply { imageDesc = localPath; timestamp = nextTimestamp() }
+ msgList.add(imgMsg)
+ addMessageToWebView(imgMsg)
+ saveMsgToDb(imgMsg, 0, "")
+ sendBroadcast(Intent("CYBER_NEW_MSG"))
+ }
+ }
+ } catch (_: Exception) {}
+ }
+
+ private fun maybeAiRecall(msg: Message) {
         val lastRecallTime = getSharedPreferences("AppConfig", Context.MODE_PRIVATE).getLong("lastRecallTime_$aiId", 0L)
         if (System.currentTimeMillis() - lastRecallTime < 300_000L) return
         val lastAiMsg = msgList.lastOrNull { !it.isFromMe && !it.isSystem }

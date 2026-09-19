@@ -573,7 +573,7 @@ $dialogLangRule
                             .addHeader("Authorization", "Bearer $apiKey")
                             .post(JSONObject().apply {
                                 put("model", model)
-                                put("max_tokens", 100)
+                                put("max_tokens", 1500)
                                 put("messages", JSONArray().apply {
                                     put(JSONObject().apply {
                                         put("role", "user")
@@ -631,7 +631,7 @@ $dialogLangRule
                             .addHeader("Authorization", "Bearer $apiKey")
                             .post(JSONObject().apply {
                                 put("model", model)
-                                put("max_tokens", 100)
+                                put("max_tokens", 1500)
                                 put("messages", JSONArray().apply {
                                     put(JSONObject().apply {
                                         put("role", "user")
@@ -736,7 +736,7 @@ $dialogLangRule
                             .post(JSONObject().apply {
                                 put("model", model)
                                 put("temperature", 0.95)
-                                put("max_tokens", 400)
+                                put("max_tokens", 1500)
                                 put("messages", JSONArray().apply {
                                     put(JSONObject().apply {
                                         put("role", "user")
