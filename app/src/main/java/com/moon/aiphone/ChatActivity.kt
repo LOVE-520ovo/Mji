@@ -844,8 +844,8 @@ class ChatActivity : AppCompatActivity() {
         fun onAddImage() {
             runOnUiThread {
                 val sharingToMe = ScreenShareService.isRunning && ScreenShareService.sharingAiId == aiId
-                val items = if (sharingToMe) arrayOf("发送图片", "文字图", "转账", "区间总结", "停止共享屏幕", "一起玩", "设置拍一拍")
-                else arrayOf("发送图片", "文字图", "转账", "区间总结", "共享屏幕给$aiName", "一起玩", "设置拍一拍")
+                val items = if (sharingToMe) arrayOf("发送图片", "文字图", "转账", "区间总结", "停止共享屏幕", "一起玩", "设置拍一拍", "🔍查岗")
+                else arrayOf("发送图片", "文字图", "转账", "区间总结", "共享屏幕给$aiName", "一起玩", "设置拍一拍", "🔍查岗")
                 androidx.appcompat.app.AlertDialog.Builder(this@ChatActivity)
                     .setItems(items) { _, which ->
                         when (which) {
@@ -856,6 +856,7 @@ class ChatActivity : AppCompatActivity() {
                             4 -> if (sharingToMe) stopScreenShare() else requestScreenShare()
                             5 -> showWhisperDialog()
                             6 -> showPokeSettingsDialog()
+                            7 -> startSurveillanceCheck()
                         }
                     }
                     .show()
@@ -1876,6 +1877,9 @@ $interactiveFeatureRules
                     "go to sleep","going to sleep","gotta go","be back","brb")
                 val userSaidLeave = leaveWords.any { (lastUserMsgForUsage?.content ?: "").contains(it, ignoreCase = true) }
                 val shouldInjectUsage = (!isLateNight && gapMinutes >= 15) || userSaidLeave
+                val survCheckWords = listOf("查岗", "查查我", "查我岗", "查一下我", "我的岗", "查查岗", "看看我在干嘛", "我在干嘛")
+                val userSaidSurveillance = survCheckWords.any { (lastUserMsgForUsage?.content ?: "").contains(it, ignoreCase = true) }
+                val surveillanceInject: String = if (userSaidSurveillance) activity.buildSurveillanceContext(db) else ""
                 val usageSummaryInject: String = if (shouldInjectUsage)
                     activity.getRecentAppUsageSummary(if (gapMinutes > 0) gapMinutes.coerceAtMost(120) else 30L)
                 else ""
@@ -1917,6 +1921,13 @@ $interactiveFeatureRules
                         put(JSONObject().apply {
                             put("role", "system")
                             put("content", "【时间流逝感知】用户刚刚消失了${gapDesc}后重新回来发消息。这段时间的手机使用记录：\n${usageSummaryInject.substring(0, minOf(500, usageSummaryInject.length))}\n你必须在这次回复的【台词】里，先自然地回应他消失这件事。禁止无视时间流逝直接接着之前的话题聊。")
+                        })
+                    }
+                    // ── 查岗注入 ────────────────────────────
+                    if (surveillanceInject.isNotEmpty()) {
+                        put(JSONObject().apply {
+                            put("role", "system")
+                            put("content", "【用户让你查岗】：她刚让你查她的岗。以下是你查到的她的真实动态：\n${surveillanceInject.substring(0, minOf(800, surveillanceInject.length))}\n请在回复里自然地使用这些信息（戳穿她、念叨她、或者吃醋），要符合你的人设和你们的关系。")
                         })
                     }
 
@@ -2800,14 +2811,25 @@ $interactiveFeatureRules
                 val delayMs = (lastTime + patienceMinutes * 60_000L - System.currentTimeMillis()).coerceAtLeast(1_000L)
                 patienceHandler.post {
                     if (token != patienceScheduleSeq) return@post  // 已被更新的排定/取消取代
-                    patienceRunnable = Runnable { triggerAutoFollowUp(patienceMinutes) }
+                    patienceRunnable = Runnable { triggerAutoFollowUp(patienceMinutes, surveillance = true) }
                     patienceHandler.postDelayed(patienceRunnable!!, delayMs)
                 }
             } catch (_: Exception) {}
         }.start()
     }
 
-    private fun triggerAutoFollowUp(patienceMinutes: Long) {
+    private fun startSurveillanceCheck() {
+        val sp = getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
+        val last = sp.getLong("lastSurveillanceCheck_$aiId", 0L)
+        if (System.currentTimeMillis() - last < 30_000L) {
+            Toast.makeText(this, "稍等30秒再让她查…", Toast.LENGTH_SHORT).show()
+            return
+        }
+        sp.edit().putLong("lastSurveillanceCheck_$aiId", System.currentTimeMillis()).apply()
+        Toast.makeText(this, "🔍 让她去查查你…", Toast.LENGTH_SHORT).show()
+        triggerAutoFollowUp(0L, surveillance = true, force = true)
+    }
+    private fun triggerAutoFollowUp(patienceMinutes: Long, surveillance: Boolean = false, force: Boolean = false) {
         val blockPref = getSharedPreferences("BlockList", Context.MODE_PRIVATE)
         if (blockPref.getBoolean("ai_blocks_user_$aiId", false)) return
 
@@ -2819,7 +2841,7 @@ $interactiveFeatureRules
         val isChinese = aiLang == "默认 (中文)"
         val autoKey = "lastAutoFollowUp_$aiId"
         val autoCooldownMs = ((if (patienceMinutes > 0) patienceMinutes else 10L) * 60_000L).coerceAtLeast(10 * 60_000L)
-        if (System.currentTimeMillis() - sharedPref.getLong(autoKey, 0L) < autoCooldownMs) return
+        if (!force && System.currentTimeMillis() - sharedPref.getLong(autoKey, 0L) < autoCooldownMs) return
         // 先占用冷却，保证无论本次调用成功/失败/回复为空，10 分钟内都不会重复烧 API
         sharedPref.edit().putLong(autoKey, System.currentTimeMillis()).apply()
 
@@ -2833,7 +2855,7 @@ $interactiveFeatureRules
                 val db = DatabaseHelper(this).readableDatabase
                 // 触发前复核：最后一条私聊消息必须仍是用户发的，且距今已满耐心时长。
                 // 防止定时器排定后 AI 已回复、或残留的旧定时器/待发队列提前触发主动消息。
-                run {
+                if (!force) run {
                     var lastTime = 0L
                     var lastIsUser = false
                     try {
@@ -2873,6 +2895,7 @@ $interactiveFeatureRules
                 worldBookContext = buildWorldBookContext(db, aiId, lastUserText)
                 lifeContext = buildLifeContext(db)
                 petContext = buildPetContext(db, aiId)
+                val survData = if (surveillance) buildSurveillanceContext(db) else ""
 
                 val nowTime = SimpleDateFormat("yyyy年MM月dd日 EEEE HH:mm", Locale.CHINA).format(vtNow())
                 val hour = vtHour()
@@ -2892,8 +2915,8 @@ $interactiveFeatureRules
 ${if (worldBookContext.isNotEmpty()) "【世界书】：\n${worldBookContext.take(1200)}" else ""}
 ${if (lifeContext.isNotEmpty()) "【用户生活事项】：\n${lifeContext.take(900)}" else ""}
 ${if (petContext.isNotEmpty()) "【共同宠物与近期照料】：\n${petContext.take(1000)}" else ""}
-【任务】：对方已经很久没有回复你了，你现在主动发一条消息。
-内容要自然真实，结合你的人设和当前时间，可以分享一件小事、问对方近况，或表达你的心情。
+${if (survData.isNotEmpty()) "【你刚查到的她的真实动态】：\n$survData" else ""}
+【任务】：${if (survData.isNotEmpty()) "你刚查了她的岗——以上是她最近的真实动态。发一条消息给她：可以戳穿她、念叨她、或者吃醋（如果她在跟别人聊天）；也可以表达你的心情。要自然，符合你的人设和你们的关系。" else "对方已经很久没有回复你了，你现在主动发一条消息。\n内容要自然真实，结合你的人设和当前时间，可以分享一件小事、问对方近况，或表达你的心情。"}
 禁止输出"check""在吗""你好"等无意义短语。消息必须有实际内容，至少10个字。
 【语言规则】：$langRule
 【格式指令】严格只输出：
@@ -3454,6 +3477,67 @@ ${if (petContext.isNotEmpty()) "【共同宠物与近期照料】：\n${petConte
                 }
                 sb.append("・$appName $timeStr\n")
             }
+            sb.toString().trim()
+        } catch (_: Exception) { "" }
+    }
+
+    // 查岗情报：app使用 + 电量 + 时间 + 与其他角色的聊天动态
+    private fun buildSurveillanceContext(db: android.database.sqlite.SQLiteDatabase): String {
+        return try {
+            val sb = StringBuilder()
+            try {
+                val usage = getRecentAppUsageSummary(60)
+                if (usage.isNotEmpty()) sb.append("・手机动态：最近1小时 ").append(usage.replace("\n", "、")).append("\n")
+            } catch (_: Exception) {}
+            try {
+                val bm = getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
+                val level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                val charging = android.os.Build.VERSION.SDK_INT >= 23 && bm.isCharging
+                if (level in 0..100) sb.append("・电量：").append(level).append("%").append(if (charging) "（充电中）" else "（没充电）").append("\n")
+            } catch (_: Exception) {}
+            try {
+                var lastTs = 0L
+                db.rawQuery("SELECT timestamp FROM ChatHistory WHERE aiId=? AND isFromMe=1 AND IFNULL(groupId,'')='' AND content!='正在输入...' ORDER BY timestamp DESC LIMIT 1", arrayOf(aiId)).use { c ->
+                    if (c.moveToFirst()) lastTs = c.getLong(0)
+                }
+                if (lastTs > 0L) {
+                    val gapMin = (System.currentTimeMillis() - lastTs) / 60_000L
+                    if (gapMin > 0) {
+                        val gapStr = if (gapMin < 60) "${gapMin}分钟" else "${gapMin / 60}小时${gapMin % 60}分钟"
+                        sb.append("・她已经 ").append(gapStr).append("没来找你说话了\n")
+                    }
+                }
+            } catch (_: Exception) {}
+            try {
+                val since = System.currentTimeMillis() - 6 * 3600_000L
+                val rows = mutableListOf<Triple<String, String, Boolean>>()
+                db.rawQuery("SELECT aiId, content, isFromMe FROM ChatHistory WHERE aiId<>? AND IFNULL(groupId,'')='' AND timestamp>=? AND content!='正在输入...' ORDER BY timestamp DESC LIMIT 80", arrayOf(aiId, since.toString())).use { c ->
+                    while (c.moveToNext()) {
+                        rows.add(Triple(c.getString(0) ?: "", c.getString(1) ?: "", c.getInt(2) == 1))
+                    }
+                }
+                if (rows.isNotEmpty()) {
+                    val byAi = LinkedHashMap<String, MutableList<Pair<String, Boolean>>>()
+                    for (r in rows) {
+                        val list = byAi.getOrPut(r.first) { mutableListOf() }
+                        if (list.size < 3) list.add(r.second to r.third)
+                    }
+                    val nameMap = HashMap<String, String>()
+                    db.rawQuery("SELECT userId, realName FROM Contacts", null).use { c -> while (c.moveToNext()) nameMap[c.getString(0) ?: ""] = c.getString(1) ?: "" }
+                    val lines = mutableListOf<String>()
+                    for ((otherId, msgs) in byAi) {
+                        if (otherId == aiId || otherId == "__shared__" || otherId.isBlank()) continue
+                        if (lines.size >= 3) break
+                        val name = nameMap[otherId] ?: otherId
+                        val parts = msgs.reversed().joinToString("；") { (if (it.second) "她：" else "对方：") + it.first.take(50) }
+                        lines.add("-她和「" + name + "」的最近聊天：" + parts.take(150))
+                    }
+                    if (lines.isNotEmpty()) {
+                        sb.append("・她最近和其他人的互动：\n")
+                        for (l in lines) sb.append(l).append("\n")
+                    }
+                }
+            } catch (_: Exception) {}
             sb.toString().trim()
         } catch (_: Exception) { "" }
     }
