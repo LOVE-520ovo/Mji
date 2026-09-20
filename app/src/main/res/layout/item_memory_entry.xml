@@ -15,4 +15,12 @@
         android:textColor="#FFFFFF"
         android:textSize="14sp"
         android:lineSpacingMultiplier="1.2" />
+    <TextView
+        android:id="@+id/tvMemorySource"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textColor="#8888CC"
+        android:textSize="11sp"
+        android:visibility="gone" />
 </LinearLayout>
