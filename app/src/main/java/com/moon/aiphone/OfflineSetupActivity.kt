@@ -28,6 +28,11 @@ class OfflineSetupActivity : AppCompatActivity() {
     private var aiName = ""
     private var editMode = false
 
+    // ===== 多人见面 =====
+    private var multiIds: List<Pair<String, String>> = emptyList()
+    private var isMulti = false
+    private var dbAiKey = ""
+
     // 选择结果（编辑模式下先用传入值初始化）
     private var meetLocation = ""
     private var meetTime = ""
@@ -43,6 +48,19 @@ class OfflineSetupActivity : AppCompatActivity() {
         aiId = intent.getStringExtra("AI_ID") ?: ""
         aiName = intent.getStringExtra("AI_NAME") ?: ""
         editMode = intent.getBooleanExtra("EDIT_MODE", false)
+        // 多人参数（选门页多选后传入的 AI_IDS / AI_NAMES）
+        val incomingIds = intent.getStringArrayExtra("AI_IDS")
+        val incomingNames = intent.getStringArrayExtra("AI_NAMES")
+        if (incomingIds != null && incomingNames != null &&
+            incomingIds.size == incomingNames.size && incomingIds.isNotEmpty()) {
+            multiIds = incomingIds.indices.map { idx -> Pair(incomingIds[idx], incomingNames[idx]) }
+            aiId = multiIds[0].first
+            aiName = multiIds[0].second
+        } else if (aiId.isNotEmpty()) {
+            multiIds = listOf(Pair(aiId, aiName))
+        }
+        isMulti = multiIds.size > 1
+        dbAiKey = if (isMulti) multiIds.joinToString(",") { it.first } else aiId
 
         // 编辑模式：用传入的当前值预填
         val incomingStyle = intent.getStringExtra("MEET_STYLE") ?: ""
@@ -80,7 +98,12 @@ class OfflineSetupActivity : AppCompatActivity() {
             setOnClickListener { finish() }
         }
         val title = TextView(ctx).apply {
-            text = if (editMode) "修改见面设置 · $aiName" else "见面设置 · $aiName"
+            text = when {
+                isMulti -> (if (editMode) "修改多人见面 · " else "多人见面设置 · ") +
+                        multiIds.joinToString("、") { it.second }
+                editMode -> "修改见面设置 · $aiName"
+                else -> "见面设置 · $aiName"
+            }
             setTextColor(Color.BLACK); textSize = 18f
             setTypeface(null, Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -168,6 +191,22 @@ class OfflineSetupActivity : AppCompatActivity() {
         akoSwitch.isChecked = meetAko
         layout.addView(akoRow.first)
 
+        // ===== 多人模式专属 =====
+        if (isMulti) {
+            layout.addView(hintLabel(ctx, "多人模式下：盲盒小剧场与行动选项暂不生效，叙事以各角色回复为主。"))
+        }
+        val shareRow = switchRow(
+            ctx,
+            "把本次见面的记忆加入共享记忆空间\n（参与本次见面的所有角色都能想起这次见面）"
+        )
+        val shareSwitch = shareRow.second
+        shareSwitch.isChecked = true
+        if (editMode) shareSwitch.isChecked = intent.getBooleanExtra("MEET_SHARE_SPACE", true)
+        if (isMulti) {
+            layout.addView(sectionLabel(ctx, "共享记忆空间"))
+            layout.addView(shareRow.first)
+        }
+
         // ===== 主按钮 =====
         val startBtn = Button(ctx).apply {
             text = if (editMode) "保存设置" else "推开门 · 开始见面"
@@ -200,6 +239,7 @@ class OfflineSetupActivity : AppCompatActivity() {
                         putExtra("MEET_STYLE", styleText)
                         putExtra("MEET_SKIT", skitSwitch.isChecked)
                         putExtra("MEET_AKO", akoSwitch.isChecked)
+                        putExtra("MEET_SHARE_SPACE", shareSwitch.isChecked)
                     }
                     setResult(RESULT_OK, result)
                     finish()
@@ -208,6 +248,8 @@ class OfflineSetupActivity : AppCompatActivity() {
                     val next = Intent(ctx, OfflineChatActivity::class.java).apply {
                         putExtra("AI_ID", aiId)
                         putExtra("AI_NAME", aiName)
+                        putExtra("AI_IDS", multiIds.map { it.first }.toTypedArray())
+                        putExtra("AI_NAMES", multiIds.map { it.second }.toTypedArray())
                         putExtra("OFFLINE_SESSION_ID", sessionId)
                         putExtra("MEET_LOCATION", meetLocation)
                         putExtra("MEET_TIME", meetTime)
@@ -218,6 +260,7 @@ class OfflineSetupActivity : AppCompatActivity() {
                         putExtra("MEET_STYLE", styleText)
                         putExtra("MEET_SKIT", skitSwitch.isChecked)
                         putExtra("MEET_AKO", akoSwitch.isChecked)
+                        putExtra("MEET_SHARE_SPACE", shareSwitch.isChecked)
                     }
                     startActivity(next)
                     finish()
@@ -233,7 +276,7 @@ class OfflineSetupActivity : AppCompatActivity() {
 
     private fun getOrCreateActiveSessionId(): String {
         val pref = getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
-        val key = "offlineActiveSession_$aiId"
+        val key = "offlineActiveSession_$dbAiKey"
         pref.getString(key, "")?.takeIf { it.isNotBlank() }?.let { return it }
 
         try {
@@ -241,7 +284,7 @@ class OfflineSetupActivity : AppCompatActivity() {
             try { db.execSQL("ALTER TABLE OfflineChatHistory ADD COLUMN sessionId TEXT DEFAULT ''") } catch (_: Exception) {}
             db.rawQuery(
                 "SELECT IFNULL(sessionId,'') FROM OfflineChatHistory WHERE aiId=? ORDER BY timestamp DESC LIMIT 1",
-                arrayOf(aiId)
+                arrayOf(dbAiKey)
             ).use { c ->
                 if (c.moveToFirst()) {
                     val existing = c.getString(0) ?: ""
@@ -253,7 +296,7 @@ class OfflineSetupActivity : AppCompatActivity() {
             }
         } catch (_: Exception) {}
 
-        val created = "door_${aiId}_${System.currentTimeMillis()}"
+        val created = "door_${dbAiKey}_${System.currentTimeMillis()}"
         pref.edit().putString(key, created).apply()
         return created
     }

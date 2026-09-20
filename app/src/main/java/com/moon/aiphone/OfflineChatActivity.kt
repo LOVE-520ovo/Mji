@@ -26,7 +26,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-data class OfflineMsg(var id: Long, var content: String, val isFromMe: Boolean, var isThinking: Boolean = false)
+data class OfflineMsg(var id: Long, var content: String, val isFromMe: Boolean, var isThinking: Boolean = false, var speaker: String = "")
 
 /** 一个行动选项：label＝类别(如"选项3·恋爱")，text＝填入输入框的实际内容 */
 data class AkoOption(val label: String, val text: String)
@@ -54,6 +54,14 @@ class OfflineChatActivity : AppCompatActivity() {
     private var meetSkit = false     // 是否开启盲盒小剧场
     private var meetAko = false      // 是否开启自动行动选项
     private var offlineSessionId = ""
+
+    // ===== 多人见面 =====
+    private var multiIds: List<Pair<String, String>> = emptyList()
+    private var isMulti = false
+    private var dbAiKey = ""
+    private var meetShareSpace = true
+    private val multiAvatarMap = mutableMapOf<String, String>()
+
     private val EDIT_REQ = 1001
     private val EXPORT_REQ = 1002
     private var pendingExportText: String? = null
@@ -65,6 +73,20 @@ class OfflineChatActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         aiId = intent.getStringExtra("AI_ID") ?: ""
         aiName = intent.getStringExtra("AI_NAME") ?: ""
+        // 多人参数
+        val incomingIds = intent.getStringArrayExtra("AI_IDS")
+        val incomingNames = intent.getStringArrayExtra("AI_NAMES")
+        if (incomingIds != null && incomingNames != null &&
+            incomingIds.size == incomingNames.size && incomingIds.isNotEmpty()) {
+            multiIds = incomingIds.indices.map { idx -> Pair(incomingIds[idx], incomingNames[idx]) }
+            aiId = multiIds[0].first
+            aiName = multiIds[0].second
+        } else if (aiId.isNotEmpty()) {
+            multiIds = listOf(Pair(aiId, aiName))
+        }
+        isMulti = multiIds.size > 1
+        dbAiKey = if (isMulti) multiIds.joinToString(",") { it.first } else aiId
+        meetShareSpace = intent.getBooleanExtra("MEET_SHARE_SPACE", true)
 
         // 读取设置页传来的参数
         meetLocation = intent.getStringExtra("MEET_LOCATION") ?: ""
@@ -80,13 +102,26 @@ class OfflineChatActivity : AppCompatActivity() {
             ?: savedInstanceState?.getString("OFFLINE_SESSION_ID")
             ?: getOrCreateActiveSessionId()
         getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
-            .edit().putString("offlineActiveSession_$aiId", offlineSessionId).apply()
+            .edit().putString("offlineActiveSession_$dbAiKey", offlineSessionId).apply()
 
         try {
             val db = DatabaseHelper(this).writableDatabase
             var cur = db.rawQuery("SELECT avatarUri FROM Contacts WHERE userId=?", arrayOf(aiId))
             if (cur.moveToFirst()) aiAvatarUri = cur.getString(0)
             cur.close()
+            // 多人：加载各参与角色头像
+            if (isMulti) {
+                try {
+                    for (p in multiIds) {
+                        db.rawQuery("SELECT avatarUri FROM Contacts WHERE userId=?", arrayOf(p.first)).use { c2 ->
+                            if (c2.moveToFirst()) {
+                                val u = c2.getString(0) ?: ""
+                                if (u.isNotEmpty()) multiAvatarMap[p.second] = u
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
 
             cur = db.rawQuery("SELECT myAvatarUri, myName FROM MyProfile LIMIT 1", null)
             if (cur.moveToFirst()) {
@@ -103,13 +138,13 @@ class OfflineChatActivity : AppCompatActivity() {
             try {
                 db.execSQL(
                     "UPDATE OfflineChatHistory SET sessionId=? WHERE aiId=? AND IFNULL(sessionId,'')=''",
-                    arrayOf(offlineSessionId, aiId)
+                    arrayOf(offlineSessionId, dbAiKey)
                 )
             } catch (_: Exception) {}
 
-            val curMsg = db.rawQuery("SELECT id, content, isFromMe FROM OfflineChatHistory WHERE aiId=? AND IFNULL(sessionId,'')=? ORDER BY timestamp ASC", arrayOf(aiId, offlineSessionId))
+            val curMsg = db.rawQuery("SELECT id, content, isFromMe, IFNULL(speaker,'') FROM OfflineChatHistory WHERE aiId=? AND IFNULL(sessionId,'')=? ORDER BY timestamp ASC", arrayOf(dbAiKey, offlineSessionId))
             while (curMsg.moveToNext()) {
-                msgList.add(OfflineMsg(curMsg.getLong(0), curMsg.getString(1), curMsg.getInt(2) == 1))
+                msgList.add(OfflineMsg(curMsg.getLong(0), curMsg.getString(1), curMsg.getInt(2) == 1, false, curMsg.getString(3) ?: ""))
             }
             curMsg.close()
         } catch (e: Exception) {}
@@ -127,14 +162,15 @@ class OfflineChatActivity : AppCompatActivity() {
 
     private fun ensureOfflineSessionColumn(db: android.database.sqlite.SQLiteDatabase) {
         try { db.execSQL("ALTER TABLE OfflineChatHistory ADD COLUMN sessionId TEXT DEFAULT ''") } catch (_: Exception) {}
+        try { db.execSQL("ALTER TABLE OfflineChatHistory ADD COLUMN speaker TEXT DEFAULT ''") } catch (_: Exception) {}
         try { db.execSQL("CREATE INDEX IF NOT EXISTS idx_offline_chat_session ON OfflineChatHistory(aiId, sessionId, timestamp)") } catch (_: Exception) {}
     }
 
     private fun getOrCreateActiveSessionId(): String {
         val pref = getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
-        val key = "offlineActiveSession_$aiId"
+        val key = "offlineActiveSession_$dbAiKey"
         pref.getString(key, "")?.takeIf { it.isNotBlank() }?.let { return it }
-        val created = "door_${aiId}_${System.currentTimeMillis()}"
+        val created = "door_${dbAiKey}_${System.currentTimeMillis()}"
         pref.edit().putString(key, created).apply()
         return created
     }
@@ -226,7 +262,7 @@ class OfflineChatActivity : AppCompatActivity() {
             setOnClickListener { finish() }
         }
         val title = TextView(this).apply {
-            text = "推开了 $aiName 的门"
+            text = if (isMulti) "推开了 ${multiIds.joinToString("、") { it.second }} 的门" else "推开了 $aiName 的门"
             setTextColor(doorTheme.headerText)
             textSize = 18f
             setTypeface(null, Typeface.BOLD)
@@ -303,8 +339,9 @@ class OfflineChatActivity : AppCompatActivity() {
                         val db = DatabaseHelper(this@OfflineChatActivity).writableDatabase
                         ensureOfflineSessionColumn(db)
                         val cvMe = ContentValues().apply {
-                            put("aiId", aiId); put("content", txt); put("isFromMe", 1); put("timestamp", ts)
+                            put("aiId", dbAiKey); put("content", txt); put("isFromMe", 1); put("timestamp", ts)
                             put("sessionId", offlineSessionId)
+                            put("speaker", "")
                         }
                         val myNewId = db.insert("OfflineChatHistory", null, cvMe)
                         msgList.add(OfflineMsg(myNewId, txt, true))
@@ -415,20 +452,21 @@ class OfflineChatActivity : AppCompatActivity() {
         try {
             val db = DatabaseHelper(this).readableDatabase
             val cur = db.rawQuery(
-                "SELECT content, isFromMe, timestamp FROM OfflineChatHistory WHERE aiId=? AND IFNULL(sessionId,'')=? ORDER BY timestamp ASC",
-                arrayOf(aiId, offlineSessionId)
+                "SELECT content, isFromMe, timestamp, IFNULL(speaker,'') FROM OfflineChatHistory WHERE aiId=? AND IFNULL(sessionId,'')=? ORDER BY timestamp ASC",
+                arrayOf(dbAiKey, offlineSessionId)
             )
             val tf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
             val sb = StringBuilder()
             sb.append("线下见面聊天记录\n")
-            sb.append("角色：$aiName\n")
+            sb.append("角色：${if (isMulti) multiIds.joinToString("、") { it.second } else aiName}\n")
             sb.append("导出时间：${tf.format(java.util.Date())}\n")
             sb.append("==============================\n\n")
             while (cur.moveToNext()) {
                 val rawContent = cur.getString(0) ?: ""
                 val isMe = cur.getInt(1) == 1
                 val ts = cur.getLong(2)
-                val role = if (isMe) myName else aiName
+                val rawSpeaker = cur.getString(3) ?: ""
+                val role = if (isMe) myName else (if (rawSpeaker.isNotEmpty()) rawSpeaker else aiName)
                 // 只清洗 AI 的消息，用户自己输入的原样保留
                 val content = if (clean && !isMe) cleanForExport(rawContent) else rawContent
                 sb.append("[${tf.format(java.util.Date(ts))}] $role：\n")
@@ -444,7 +482,7 @@ class OfflineChatActivity : AppCompatActivity() {
             val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "text/plain"
-                putExtra(Intent.EXTRA_TITLE, "线下见面_${aiName}_${tag}_$dateStr.txt")
+                putExtra(Intent.EXTRA_TITLE, "线下见面_${if (isMulti) multiIds.joinToString("_") { it.second } else aiName}_${tag}_$dateStr.txt")
             }
             startActivityForResult(intent, EXPORT_REQ)
         } catch (e: Exception) {
@@ -489,6 +527,9 @@ class OfflineChatActivity : AppCompatActivity() {
             putExtra("MEET_STYLE", meetStyle)
             putExtra("MEET_SKIT", meetSkit)
             putExtra("MEET_AKO", meetAko)
+            putExtra("MEET_SHARE_SPACE", meetShareSpace)
+            putExtra("AI_IDS", multiIds.map { it.first }.toTypedArray())
+            putExtra("AI_NAMES", multiIds.map { it.second }.toTypedArray())
         }
         startActivityForResult(i, EDIT_REQ)
     }
@@ -513,6 +554,7 @@ class OfflineChatActivity : AppCompatActivity() {
             meetStyle = data.getStringExtra("MEET_STYLE") ?: meetStyle
             meetSkit = data.getBooleanExtra("MEET_SKIT", meetSkit)
             meetAko = data.getBooleanExtra("MEET_AKO", meetAko)
+            meetShareSpace = data.getBooleanExtra("MEET_SHARE_SPACE", meetShareSpace)
             Toast.makeText(this, "见面设置已更新，下一条生效", Toast.LENGTH_SHORT).show()
         }
         if (requestCode == THEME_REQ && resultCode == RESULT_OK) {
@@ -547,9 +589,9 @@ class OfflineChatActivity : AppCompatActivity() {
             .setTitle("重新开始")
             .setMessage("将开启一个全新的会话，从头开始剧情。\n当前对话会保留在库中，不会被删除。")
             .setPositiveButton("重新开始") { _, _ ->
-                val created = "door_${aiId}_${System.currentTimeMillis()}"
+                val created = "door_${dbAiKey}_${System.currentTimeMillis()}"
                 getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
-                    .edit().putString("offlineActiveSession_$aiId", created).apply()
+                    .edit().putString("offlineActiveSession_$dbAiKey", created).apply()
                 offlineSessionId = created
                 msgList.clear()
                 adapter.notifyDataSetChanged()
@@ -567,7 +609,7 @@ class OfflineChatActivity : AppCompatActivity() {
                 try {
                     DatabaseHelper(this).writableDatabase.execSQL(
                         "DELETE FROM OfflineChatHistory WHERE aiId=? AND IFNULL(sessionId,'')=?",
-                        arrayOf(aiId, offlineSessionId)
+                        arrayOf(dbAiKey, offlineSessionId)
                     )
                     msgList.clear()
                     adapter.notifyDataSetChanged()
@@ -596,7 +638,7 @@ class OfflineChatActivity : AppCompatActivity() {
                 // 构造对话记录文本
                 val dialogText = StringBuilder()
                 msgList.filter { !it.isThinking }.forEach { msg ->
-                    val role = if (msg.isFromMe) myName else aiName
+                    val role = if (msg.isFromMe) myName else (if (isMulti && msg.speaker.isNotEmpty()) msg.speaker else aiName)
                     dialogText.append("${role}：${msg.content}\n")
                 }
 
@@ -609,14 +651,18 @@ class OfflineChatActivity : AppCompatActivity() {
                     if (meetBackground.isNotEmpty()) append("背景：$meetBackground。")
                 }
 
+                val multiNameList = multiIds.joinToString("、") { it.second }
+                val summaryViewPerson = if (isMulti)
+                    "请你以旁白视角，把这次多人见面整理成一段300字左右的详细记忆（写清每个角色的表现与关键互动，提及每个参与者的名字）。"
+                else "请你以 $aiName 的第一人称视角，把这次见面整理成一段300字左右的详细记忆。"
                 val summaryPrompt = """
-                    以下是 $myName 和 $aiName 的一次线下见面记录。
+                    以下是 $myName 和 $multiNameList 的一次线下见面记录。
                     见面情况：$contextInfo
                     
                     对话内容：
                     $dialogText
                     
-                    请你以 $aiName 的第一人称视角，把这次见面整理成一段300字左右的详细记忆。
+                    $summaryViewPerson
                     要求：
                     1. 写清楚：这次见面的主题（为什么见面、做了什么）、关键细节（发生的事、说过的关键话、具体的场景）、情感变化和转折、前因后果
                     2. 语气像是 $aiName 在回忆这段经历
@@ -645,20 +691,23 @@ class OfflineChatActivity : AppCompatActivity() {
                         val db = DatabaseHelper(this).writableDatabase
                         val dateStr = java.text.SimpleDateFormat("MM月dd日", java.util.Locale.getDefault()).format(java.util.Date())
                         val cv = ContentValues().apply {
-                            put("aiId", aiId)
+                            put("aiId", if (isMulti) multiIds[0].first else aiId)
                             put("memoryText", "【线下见面 $dateStr】$summary")
                             put("category", "shared_event")
                             put("insertTime", System.currentTimeMillis())
+                            if (isMulti && meetShareSpace) {
+                                put("shareTargets", "," + multiIds.joinToString(",") { it.first } + ",")
+                            }
                         }
                         db.insert("MemoryBank", null, cv)
 
                         runOnUiThread {
                             AlertDialog.Builder(this)
                                 .setTitle("记忆已写入 ✓")
-                                .setMessage("本次见面已压缩为记忆：\n\n$summary")
+                                .setMessage("本次见面已压缩为记忆" + (if (isMulti && meetShareSpace) "（已加入共享记忆空间）" else "") + "：\n\n$summary")
                                 .setPositiveButton("好的") { _, _ ->
                                     getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
-                                        .edit().remove("offlineActiveSession_$aiId").apply()
+                                        .edit().remove("offlineActiveSession_$dbAiKey").apply()
                                     finish()
                                 }
                                 .show()
@@ -728,7 +777,7 @@ class OfflineChatActivity : AppCompatActivity() {
             val container = root.findViewWithTag<LinearLayout>("content_container")
 
             floorTv.text = "#${position + 1}"
-            nameTv.text = if (item.isFromMe) myName else aiName
+            nameTv.text = if (item.isFromMe) myName else (if (isMulti && item.speaker.isNotEmpty()) item.speaker else aiName)
             // 楼层不使用整块卡片底板或外框；头像、名字、楼层号与留白就是分隔标志。
             root.setBackgroundColor(Color.TRANSPARENT)
 
@@ -775,7 +824,7 @@ class OfflineChatActivity : AppCompatActivity() {
                 }
             }
 
-            val uriStr = if (item.isFromMe) myAvatarUri else aiAvatarUri
+            val uriStr = if (item.isFromMe) myAvatarUri else if (isMulti && item.speaker.isNotEmpty()) multiAvatarMap[item.speaker] else aiAvatarUri
             if (!uriStr.isNullOrEmpty()) { avatar.setImageURI(Uri.parse(uriStr)); avatar.setBackgroundColor(Color.TRANSPARENT) }
             else { avatar.setImageDrawable(null); avatar.setBackgroundColor(Color.parseColor("#CCCCCC")) }
 
@@ -968,7 +1017,164 @@ class OfflineChatActivity : AppCompatActivity() {
             </head><body>$html</body></html>""".trimIndent()
     }
 
+    private fun callAiMulti(inputText: String, aiMsgObj: OfflineMsg, rv: RecyclerView) {
+        isAiRunning = true; sendBtn.alpha = 0.5f; regenBtn.alpha = 0.5f
+        Thread {
+            try {
+                val sharedPref = getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
+                val url = sharedPref.getString("apiUrl", "") ?: return@Thread
+                val key = sharedPref.getString("apiKey", "") ?: return@Thread
+                val model = sharedPref.getString("modelName", "")?.ifBlank { "gpt-4o" } ?: "gpt-4o"
+                var finalUrl = if (url.endsWith("/")) url.dropLast(1) else url
+                if (!finalUrl.endsWith("/chat/completions")) finalUrl += if (finalUrl.contains("/v1")) "/chat/completions" else "/v1/chat/completions"
+                val offlineLang = sharedPref.getString("offlineLang", "中文") ?: "中文"
+                val dbRead = DatabaseHelper(this@OfflineChatActivity).readableDatabase
+                // 各角色资料
+                val speakerInfos = StringBuilder()
+                for ((index, pair) in multiIds.withIndex()) {
+                    val rid = pair.first
+                    val rname = pair.second
+                    var aiPersona = ""
+                    dbRead.rawQuery("SELECT identityInfo FROM Contacts WHERE userId=?", arrayOf(rid)).use { c ->
+                        if (c.moveToFirst() && !c.isNull(0)) aiPersona = c.getString(0) ?: ""
+                    }
+                    var cyberMemory = ""
+                    try {
+                        dbRead.rawQuery(
+                            "SELECT memoryText FROM MemoryBank WHERE aiId=? OR (IFNULL(shareTargets,'')<>'' AND (shareTargets='all' OR instr(','||shareTargets||',', ','||?||',')>0)) ORDER BY insertTime DESC LIMIT 8",
+                            arrayOf(rid, rid)
+                        ).use { c ->
+                            val sb = StringBuilder()
+                            while (c.moveToNext()) sb.append(c.getString(0)).append("\n")
+                            cyberMemory = sb.toString().trim()
+                        }
+                    } catch (_: Exception) {}
+                    val aiLang = sharedPref.getString("aiLang_$rid", "默认 (中文)") ?: "默认 (中文)"
+                    speakerInfos.append("第${index + 1}位角色：\n")
+                    speakerInfos.append("【名字】：$rname\n")
+                    speakerInfos.append("【角色设定】：${aiPersona.take(400)}\n")
+                    speakerInfos.append("【核心记忆】：${cyberMemory.take(300)}\n")
+                    speakerInfos.append("【语言要求】：$aiLang\n\n")
+                }
+                val promptBuilder = StringBuilder()
+                promptBuilder.append("系统设定：这是线下多人见面角色扮演。你（AI）要同时扮演以下 ${multiIds.size} 位角色，与 $myName 在同一个场景中见面互动。\n")
+                if (meetLocation.isNotEmpty() || meetTime.isNotEmpty() || meetMood.isNotEmpty()) {
+                    promptBuilder.append("【本次见面场景】")
+                    if (meetLocation.isNotEmpty()) promptBuilder.append("地点：$meetLocation。")
+                    if (meetTime.isNotEmpty()) promptBuilder.append("时间：$meetTime。")
+                    if (meetMood.isNotEmpty()) promptBuilder.append("氛围：$meetMood。")
+                    promptBuilder.append("\n")
+                }
+                if (meetBackground.isNotEmpty()) promptBuilder.append("【前情背景】$meetBackground\n")
+                if (meetMask.isNotEmpty()) {
+                    promptBuilder.append("【对方的面具】$myName 这次扮演的身份是：$meetMask。请始终把对方当成这个身份来对待与互动。\n")
+                }
+                when (meetPerson) {
+                    "第一人称" -> promptBuilder.append("【人称】以 $myName 的第一人称视角（用“我”指代 $myName）来叙写。\n")
+                    "第三人称" -> promptBuilder.append("【人称】用第三人称（用 $myName 的名字或“TA”）来指代 $myName。\n")
+                    else -> promptBuilder.append("【人称】用第二人称（称呼 $myName 为“你”）来叙写。\n")
+                }
+                if (offlineLang == "英文") {
+                    promptBuilder.append("【Language Instruction】You must write EVERYTHING in English only. All narration, inner thoughts, actions, dialogue — 100% English. No Chinese characters at all.\n")
+                } else {
+                    promptBuilder.append("【语言指令】叙事部分全程使用简体中文；各角色的台词遵循其各自的【语言要求】。\n")
+                }
+                if (meetStyle.isNotEmpty()) {
+                    promptBuilder.append("【文本风格要求】\n$meetStyle\n")
+                }
+                promptBuilder.append("【各角色资料】\n")
+                promptBuilder.append(speakerInfos.toString())
+                promptBuilder.append("【最近互动上下文】\n")
+                val curContext = dbRead.rawQuery(
+                    "SELECT content, isFromMe, IFNULL(speaker,'') FROM (SELECT content, isFromMe, speaker, timestamp FROM OfflineChatHistory WHERE aiId=? AND IFNULL(sessionId,'')=? ORDER BY timestamp DESC LIMIT 20) AS t ORDER BY t.timestamp ASC",
+                    arrayOf(dbAiKey, offlineSessionId)
+                )
+                while (curContext.moveToNext()) {
+                    val isMe = curContext.getInt(1) == 1
+                    val spk = curContext.getString(2) ?: ""
+                    val role = if (isMe) myName else if (spk.isNotEmpty()) spk else aiName
+                    promptBuilder.append("${role}：${curContext.getString(0)}\n")
+                }
+                curContext.close()
+                promptBuilder.append("\n$myName：$inputText\n")
+                promptBuilder.append("\n【输出格式（必须严格遵守）】\n")
+                promptBuilder.append("1. 你必须让以上 ${multiIds.size} 位角色在本回合全部出场，每个角色对当前进展做出各自反应；角色之间可以互动、接话、对彼此有不同态度。\n")
+                promptBuilder.append("2. 每个角色的内容 = 该角色的动作、神态、台词的叙事体（延续上文人称、文风与各自的语言要求），保持各自人设与说话方式。\n")
+                promptBuilder.append("3. 每个角色的内容块以【发送者】开头，格式：\n【发送者】角色名\n（该角色的内容）\n")
+                promptBuilder.append("4. 不同角色的内容块之间用 <|SPLIT|> 分隔。除内容块外不要输出任何额外说明。\n")
+                val jsonBody = JSONObject().apply {
+                    put("model", model); put("temperature", 0.7)
+                    put("messages", JSONArray().apply {
+                        put(JSONObject().apply { put("role", "user"); put("content", promptBuilder.toString()) })
+                    })
+                }
+                val request = Request.Builder().url(finalUrl).addHeader("Authorization", "Bearer $key")
+                    .post(jsonBody.toString().toRequestBody("application/json".toMediaTypeOrNull())).build()
+                val timeout = offlineTimeoutSeconds()
+                val response = Http.client.newBuilder().connectTimeout(60, TimeUnit.SECONDS).readTimeout(timeout, TimeUnit.SECONDS).build().newCall(request).execute()
+                val body = response.body?.string()
+                var finalAnswer = "（接口请求失败或未解析到数据）"
+                if (!body.isNullOrEmpty()) {
+                    val jsonObj = JSONObject(body)
+                    if (jsonObj.has("choices")) finalAnswer = jsonObj.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+                }
+                val blocks = splitMultiReplyBlocks(finalAnswer)
+                val writeDb = DatabaseHelper(this@OfflineChatActivity).writableDatabase
+                ensureOfflineSessionColumn(writeDb)
+                var first = true
+                for (block in blocks) {
+                    val senderName = extractMultiSenderName(block) ?: continue
+                    val matched = multiIds.find { it.second.trim() == senderName.trim() }
+                        ?: multiIds.find { senderName.contains(it.second.trim()) || it.second.trim().contains(senderName.trim()) }
+                        ?: continue
+                    var inner = block.trim()
+                    if (inner.startsWith("【发送者】")) {
+                        val nl = inner.indexOf('\n')
+                        inner = if (nl > 0) inner.substring(nl + 1).trim() else ""
+                    }
+                    if (inner.isEmpty()) continue
+                    val cleaned = cleanAiAnswerForBubble(inner)
+                    val now = System.currentTimeMillis()
+                    val insertCv = ContentValues().apply {
+                        put("aiId", dbAiKey); put("content", cleaned); put("isFromMe", 0); put("timestamp", now)
+                        put("sessionId", offlineSessionId)
+                        put("speaker", matched.second)
+                    }
+                    val newId = writeDb.insert("OfflineChatHistory", null, insertCv)
+                    runOnUiThread {
+                        if (first) {
+                            aiMsgObj.id = newId; aiMsgObj.content = cleaned; aiMsgObj.isThinking = false; aiMsgObj.speaker = matched.second
+                            adapter.notifyDataSetChanged()
+                        } else {
+                            msgList.add(OfflineMsg(newId, cleaned, false, false, matched.second))
+                            adapter.notifyDataSetChanged()
+                        }
+                        rv.scrollToPosition(msgList.size - 1)
+                    }
+                    first = false
+                    Thread.sleep((350..750).random().toLong())
+                }
+                if (first) {
+                    runOnUiThread {
+                        aiMsgObj.content = cleanAiAnswerForBubble(finalAnswer); aiMsgObj.isThinking = false
+                        adapter.notifyDataSetChanged()
+                        rv.scrollToPosition(msgList.size - 1)
+                    }
+                }
+                runOnUiThread { isAiRunning = false; sendBtn.alpha = 1f; regenBtn.alpha = 1f }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                runOnUiThread {
+                    aiMsgObj.content = "（网络异常：${e.message}）"; aiMsgObj.isThinking = false
+                    adapter.notifyDataSetChanged()
+                    isAiRunning = false; sendBtn.alpha = 1f; regenBtn.alpha = 1f
+                }
+            }
+        }.start()
+    }
+
     private fun callAi(inputText: String, aiMsgObj: OfflineMsg, rv: RecyclerView) {
+        if (multiIds.size > 1) { callAiMulti(inputText, aiMsgObj, rv); return }
         val ts = System.currentTimeMillis()
         isAiRunning = true; sendBtn.alpha = 0.5f; regenBtn.alpha = 0.5f
         Thread {
@@ -1134,6 +1340,30 @@ class OfflineChatActivity : AppCompatActivity() {
                 }
             }
         }.start()
+    }
+
+    private fun splitMultiReplyBlocks(raw: String): List<String> {
+        val bySplit = raw.split("<|SPLIT|>").map { it.trim() }.filter { it.isNotEmpty() }
+        if (bySplit.size > 1) return bySplit
+        val marker = Regex("(?=(?:【\\s*发送者\\s*】|\\[\\s*发送者\\s*\\]|^\\s*发送者\\s*[:：]))", setOf(RegexOption.MULTILINE))
+        return marker.split(raw)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && extractMultiSenderName(it) != null }
+            .ifEmpty { bySplit }
+    }
+
+    private fun extractMultiSenderName(block: String): String? {
+        val patterns = listOf(
+            Regex("【\\s*发送者\\s*】\\s*([^【\\[\\n:：]+)"),
+            Regex("\\[\\s*发送者\\s*\\]\\s*([^【\\[\\n:：]+)"),
+            Regex("(?m)^\\s*发送者\\s*[:：]\\s*([^\\n]+)")
+        )
+        for (p in patterns) {
+            val name = p.find(block)?.groupValues?.get(1)?.trim()
+                ?.trim('：', ':', '】', ']', ' ')
+            if (!name.isNullOrBlank()) return name
+        }
+        return null
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
