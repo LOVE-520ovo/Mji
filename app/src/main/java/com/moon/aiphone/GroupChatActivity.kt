@@ -337,7 +337,16 @@ class GroupChatActivity : AppCompatActivity() {
             layoutParams =
                 LinearLayout.LayoutParams(dp(36), LinearLayout.LayoutParams.WRAP_CONTENT)
             gravity = Gravity.CENTER
-            setOnClickListener { pickGroupImage.launch(arrayOf("image/*")) }
+            setOnClickListener {
+                androidx.appcompat.app.AlertDialog.Builder(this@GroupChatActivity)
+                    .setItems(arrayOf("发送图片", "区间总结")) { _, which ->
+                        when (which) {
+                            0 -> pickGroupImage.launch(arrayOf("image/*"))
+                            1 -> startGroupIntervalSummary()
+                        }
+                    }
+                    .show()
+            }
         }
 
         etInput = EditText(this).apply {
@@ -1145,6 +1154,82 @@ $guideStr
     }
 
     private var isTriggering = false
+
+    // ── 区间总结（群聊）──────────────────────────────
+    private fun startGroupIntervalSummary() {
+        Thread {
+            try {
+                val db = DatabaseHelper(this).writableDatabase
+                val cursor = getSharedPreferences("AppConfig", Context.MODE_PRIVATE).getLong("intervalCursor_group_$groupId", 0L)
+                val total = db.rawQuery(
+                    "SELECT COUNT(*) FROM ChatHistory WHERE groupId=? AND timestamp>? AND content!='' AND content!='正在输入...'",
+                    arrayOf(groupId, cursor.toString())
+                ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+                if (total <= 0) {
+                    runOnUiThread { Toast.makeText(this, "✅ 群聊历史已经全部总结完啦", Toast.LENGTH_SHORT).show() }
+                    return@Thread
+                }
+                val take = minOf(total, 50)
+                runOnUiThread {
+                    androidx.appcompat.app.AlertDialog.Builder(this)
+                        .setTitle("📜 区间总结（群聊）")
+                        .setMessage("从上次断点继续，总结最早 $take 条未总结消息（总共还剩 $total 条）。\n\n总结会存进群内每个角色的长期记忆——连续、不重复。")
+                        .setPositiveButton("开始") { _, _ -> doGroupIntervalSummary(cursor, take) }
+                        .setNegativeButton("取消", null)
+                        .show()
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    private fun doGroupIntervalSummary(cursor: Long, count: Int) {
+        Toast.makeText(this, "正在总结 $count 条…", Toast.LENGTH_SHORT).show()
+        Thread {
+            try {
+                val db = DatabaseHelper(this).writableDatabase
+                var myName = "我"
+                try { db.rawQuery("SELECT myName FROM MyProfile LIMIT 1", null).use { c -> if (c.moveToFirst()) myName = c.getString(0) ?: "我" } } catch (_: Exception) {}
+                val lines = mutableListOf<String>()
+                var lastTs = cursor
+                db.rawQuery(
+                    "SELECT content, isFromMe, senderName, timestamp FROM ChatHistory WHERE groupId=? AND timestamp>? AND content!='' AND content!='正在输入...' ORDER BY timestamp ASC LIMIT ?",
+                    arrayOf(groupId, cursor.toString(), count.toString())
+                ).use { c ->
+                    while (c.moveToNext()) {
+                        val content = (c.getString(0) ?: "").take(220)
+                        if (content.isBlank()) continue
+                        val sender = if (c.getInt(1) == 1) myName else (c.getString(2) ?: "").ifBlank { "成员" }
+                        lines.add("$sender: $content")
+                        lastTs = c.getLong(3)
+                    }
+                }
+                if (lines.isEmpty()) {
+                    runOnUiThread { Toast.makeText(this, "没有内容可总结", Toast.LENGTH_SHORT).show() }
+                    return@Thread
+                }
+                val chatLog = lines.joinToString("\n").takeLast(8000)
+                val dateStr = SimpleDateFormat("MM月dd日", Locale.CHINA).format(Date())
+                val summary = MemoryManager.generateIntervalSummary(this, chatLog, dateStr)
+                if (summary.isNullOrBlank()) {
+                    runOnUiThread { Toast.makeText(this, "总结失败（网络/配置），断点未推进，可重试", Toast.LENGTH_LONG).show() }
+                    return@Thread
+                }
+                val members = mutableListOf<String>()
+                try {
+                    db.rawQuery("SELECT memberId FROM GroupMembers WHERE groupId=? AND isAi=1", arrayOf(groupId)).use { c ->
+                        while (c.moveToNext()) c.getString(0)?.let { members.add(it) }
+                    }
+                } catch (_: Exception) {}
+                for (mid in members) {
+                    if (mid.isNotBlank()) MemoryManager.saveIntervalMemory(this, mid, summary)
+                }
+                getSharedPreferences("AppConfig", Context.MODE_PRIVATE).edit().putLong("intervalCursor_group_$groupId", lastTs).apply()
+                runOnUiThread { Toast.makeText(this, "✅ 已总结 $count 条，写入 ${members.size} 个角色的记忆", Toast.LENGTH_LONG).show() }
+            } catch (_: Exception) {
+                runOnUiThread { Toast.makeText(this, "总结出错，可重试", Toast.LENGTH_SHORT).show() }
+            }
+        }.start()
+    }
 
     private fun triggerAIReply() {
         if (isTriggering) return
