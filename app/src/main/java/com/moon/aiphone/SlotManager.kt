@@ -153,14 +153,14 @@ object SlotManager {
     }
 
     /** 递归复制目录。exclude 收到的是相对路径（用 / 分隔）。 */
-    fun copyDir(src: File, dst: File, exclude: (String) -> Boolean = { false }, rel: String = "") {
+    fun copyDir(src: File, dst: File, rel: String = "", exclude: (String) -> Boolean = { false }) {
         if (exclude(rel)) return
         if (!src.exists()) return
         if (src.isDirectory) {
             if (!dst.exists()) dst.mkdirs()
             src.listFiles()?.forEach { f ->
                 val r = if (rel.isEmpty()) f.name else "$rel/${f.name}"
-                copyDir(f, File(dst, f.name), exclude, r)
+                copyDir(f, File(dst, f.name), r, exclude)
             }
         } else {
             try {
@@ -267,13 +267,13 @@ object AppBackup {
         }.start()
     }
 
-    private fun zipDir(zos: java.util.zip.ZipOutputStream, dir: File, prefix: String, exclude: (String) -> Boolean = { false }, rel: String = "") {
+    private fun zipDir(zos: java.util.zip.ZipOutputStream, dir: File, prefix: String, rel: String = "", exclude: (String) -> Boolean = { false }) {
         if (exclude(rel)) return
         if (!dir.exists()) return
         if (dir.isDirectory) {
             dir.listFiles()?.forEach { f ->
                 val r = if (rel.isEmpty()) f.name else "$rel/${f.name}"
-                zipDir(zos, f, prefix, exclude, r)
+                zipDir(zos, f, prefix, r, exclude)
             }
         } else {
             try {
