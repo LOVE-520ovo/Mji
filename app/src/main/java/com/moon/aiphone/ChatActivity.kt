@@ -31,6 +31,21 @@ import android.util.Base64
 import android.util.Log
 import androidx.core.content.ContextCompat
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.LinearGradient
+import android.graphics.RadialGradient
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.ScrollView
+import android.widget.FrameLayout
+import android.text.InputType
+import android.view.Gravity
 
 class ChatActivity : AppCompatActivity() {
 
@@ -91,6 +106,164 @@ class ChatActivity : AppCompatActivity() {
             saveMsgToDb(myMsg, 1, "")
             startPatienceTimer()
         }
+    }
+
+    // ── 文字图（极简黑白 · 水玻璃） ──────────────────────────────
+    private fun showTextImageDialog() {
+        runOnUiThread {
+            val input = EditText(this)
+            input.hint = "写点什么…（一句话、一段话都行）"
+            input.setTextSize(16f)
+            input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            input.minLines = 3
+            input.gravity = Gravity.TOP
+            val pad = (24 * resources.displayMetrics.density).toInt()
+            val container = FrameLayout(this)
+            container.setPadding(pad, pad / 2, pad, 0)
+            container.addView(input, FrameLayout.LayoutParams(-1, -2))
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("🖤 文字图")
+                .setView(container)
+                .setPositiveButton("预览") { _, _ ->
+                    val text = input.text.toString().trim()
+                    if (text.isEmpty()) {
+                        Toast.makeText(this, "先写点文字", Toast.LENGTH_SHORT).show()
+                    } else {
+                        showTextImagePreview(text)
+                    }
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
+    private fun showTextImagePreview(text: String) {
+        Thread {
+            val bmp = try { generateTextImage(text) } catch (_: Exception) { null }
+            runOnUiThread {
+                if (bmp == null) {
+                    Toast.makeText(this, "生成失败，再试一次", Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
+                }
+                val iv = ImageView(this)
+                iv.adjustViewBounds = true
+                iv.setImageBitmap(bmp)
+                val pad = (20 * resources.displayMetrics.density).toInt()
+                iv.setPadding(pad, pad, pad, pad)
+                val scroll = ScrollView(this)
+                scroll.addView(iv)
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("预览")
+                    .setView(scroll)
+                    .setPositiveButton("发送") { _, _ -> sendTextImage(bmp) }
+                    .setNeutralButton("重写") { _, _ -> showTextImageDialog() }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+        }.start()
+    }
+
+    private fun sendTextImage(bmp: Bitmap) {
+        Thread {
+            try {
+                val dir = File(filesDir, "text_images")
+                if (!dir.exists()) dir.mkdirs()
+                val f = File(dir, "textimg_" + System.currentTimeMillis() + ".png")
+                FileOutputStream(f).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                runOnUiThread {
+                    val base64 = uriToBase64DataUri(f.absolutePath)
+                    val myMsg = Message("【图片】", true, false, false).apply {
+                        imageDesc = f.absolutePath
+                        timestamp = nextTimestamp()
+                    }
+                    msgList.add(myMsg)
+                    addMessageToWebView(myMsg, base64)
+                    saveMsgToDb(myMsg, 1, "")
+                    startPatienceTimer()
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    private fun generateTextImage(text: String): Bitmap {
+        val W = 1080
+        val padX = 96
+        val padTop = 120
+        val padBottom = 150
+        val cardPad = 76
+        val maxTextW = W - padX * 2 - cardPad * 2
+        val body = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFF5F5F7.toInt()
+            textSize = 50f
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+        }
+        val lines = mutableListOf<String>()
+        for (raw in text.split("\n")) {
+            if (raw.isEmpty()) { lines.add(""); continue }
+            var cur = ""
+            for (ch in raw) {
+                val t = cur + ch
+                if (body.measureText(t) > maxTextW && cur.isNotEmpty()) {
+                    lines.add(cur)
+                    cur = ch.toString()
+                } else {
+                    cur = t
+                }
+            }
+            if (cur.isNotEmpty()) lines.add(cur)
+        }
+        val lineH = body.textSize * 1.6f
+        val textH = (lines.size * lineH).toInt()
+        val cardH = textH + cardPad * 2
+        val H = (padTop + cardH + padBottom).coerceAtLeast(900)
+        val bmp = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        c.drawRect(0f, 0f, W.toFloat(), H.toFloat(), Paint().apply {
+            shader = LinearGradient(0f, 0f, W.toFloat(), H.toFloat(),
+                0xFF0B0B0D.toInt(), 0xFF17171C.toInt(), Shader.TileMode.CLAMP)
+        })
+        fun glow(cx: Float, cy: Float, r: Float, a: Int) {
+            c.drawCircle(cx, cy, r, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = RadialGradient(cx, cy, r,
+                    intArrayOf((a shl 24) or 0xFFFFFF, 0x00FFFFFF),
+                    floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
+            })
+        }
+        glow(W * 0.18f, H * 0.10f, W * 0.75f, 0x18)
+        glow(W * 0.92f, H * 0.60f, W * 0.70f, 0x10)
+        glow(W * 0.40f, H * 0.98f, W * 0.65f, 0x0C)
+        val left = padX.toFloat()
+        val top = padTop.toFloat()
+        val right = (W - padX).toFloat()
+        val bottom = (padTop + cardH).toFloat()
+        val radius = 58f
+        val rect = RectF(left, top, right, bottom)
+        c.drawRoundRect(rect, radius, radius, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x14FFFFFF })
+        c.drawRoundRect(rect, radius, radius, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f
+            shader = LinearGradient(left, top, right, bottom,
+                intArrayOf(0x5AFFFFFF.toInt(), 0x1AFFFFFF, 0x0DFFFFFF),
+                floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        })
+        c.drawRoundRect(RectF(left + radius, top + 1.5f, right - radius, top + 3.5f), 2f, 2f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = LinearGradient(left + radius, 0f, right - radius, 0f,
+                    intArrayOf(0x00FFFFFF, 0x45FFFFFF.toInt(), 0x00FFFFFF),
+                    floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+            })
+        var y = top + cardPad + body.textSize
+        for (ln in lines) {
+            if (ln.isNotEmpty()) c.drawText(ln, left + cardPad, y, body)
+            y += lineH
+        }
+        val foot = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x5AFFFFFF.toInt()
+            textSize = 32f
+        }
+        val label = "·"
+        c.drawText(label, W / 2f - foot.measureText(label) / 2f, H - padBottom * 0.45f, foot)
+        return bmp
     }
 
     private var historyExportFormat = "txt"
@@ -539,15 +712,16 @@ class ChatActivity : AppCompatActivity() {
         fun onAddImage() {
             runOnUiThread {
                 val sharingToMe = ScreenShareService.isRunning && ScreenShareService.sharingAiId == aiId
-                val items = if (sharingToMe) arrayOf("发送图片", "停止共享屏幕", "一起玩", "设置拍一拍")
-                else arrayOf("发送图片", "共享屏幕给$aiName", "一起玩", "设置拍一拍")
+                val items = if (sharingToMe) arrayOf("发送图片", "文字图", "停止共享屏幕", "一起玩", "设置拍一拍")
+                else arrayOf("发送图片", "文字图", "共享屏幕给$aiName", "一起玩", "设置拍一拍")
                 androidx.appcompat.app.AlertDialog.Builder(this@ChatActivity)
                     .setItems(items) { _, which ->
                         when (which) {
                             0 -> pickChatImage.launch(arrayOf("image/*"))
-                            1 -> if (sharingToMe) stopScreenShare() else requestScreenShare()
-                            2 -> showWhisperDialog()
-                            3 -> showPokeSettingsDialog()
+                            1 -> showTextImageDialog()
+                            2 -> if (sharingToMe) stopScreenShare() else requestScreenShare()
+                            3 -> showWhisperDialog()
+                            4 -> showPokeSettingsDialog()
                         }
                     }
                     .show()
