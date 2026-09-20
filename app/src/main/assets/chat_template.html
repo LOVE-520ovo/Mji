@@ -338,6 +338,27 @@
         .money-card.transfer { background: #f39b3d; }
         .money-card.redpacket { background: #f35a45; }
         .money-card.opened { filter: saturate(.65); opacity: .8; }
+        .offline-card {
+          width: min(272px, 72vw);
+          border-radius: 12px;
+          overflow: hidden;
+          background: linear-gradient(135deg, #2b2b3a, #1c1c28);
+          border: 1px solid rgba(255,255,255,.14);
+          color: #fff;
+          box-shadow: 0 2px 10px rgba(0,0,0,.35);
+          user-select: none;
+          -webkit-user-select: none;
+        }
+        .offline-card .oc-head { display:flex; align-items:center; gap:10px; padding:12px 14px 8px; }
+        .offline-card .oc-door { font-size:22px; }
+        .offline-card .oc-title { font-size:14px; font-weight:600; }
+        .offline-card .oc-sub { font-size:11px; color:rgba(255,255,255,.6); margin-top:2px; }
+        .offline-card .oc-body { padding:2px 14px 10px; font-size:12px; color:rgba(255,255,255,.85); }
+        .offline-card .oc-row { margin-top:4px; }
+        .offline-card .oc-label { color:rgba(255,255,255,.5); }
+        .offline-card .oc-bg { margin-top:8px; font-size:11px; color:rgba(255,255,255,.6); line-height:16px; max-height:48px; overflow:hidden; }
+        .offline-card .oc-btn { display:block; text-align:center; padding:10px; background:#4A7C59; color:#fff; font-size:13px; font-weight:600; cursor:pointer; }
+        .offline-card .oc-btn:active { filter:brightness(.9); }
         .money-main { display:flex; align-items:center; gap:12px; padding:15px 14px 13px; }
         .money-icon {
           width:42px; height:42px; border:2px solid rgba(255,255,255,.92);
@@ -1027,6 +1048,8 @@
         renderMusicCard(bubble, d.musicCardJson);
       } else if (d.moneyCardJson) {
         renderMoneyCard(bubble, d.moneyCardType, d.moneyCardJson, d.id || '');
+      } else if (d.offlineCardJson) {
+        renderOfflineCard(bubble, d.offlineCardJson, d.id || '');
       } else if (d.imageUri) {
         renderImageBubble(bubble, d.imageUri, d.content);
       } else if (d.isVoice) {
@@ -1121,6 +1144,36 @@
       if (!opened && !fromMe) box.onclick = function(e) {
         e.stopPropagation();
         Android.onMoneyCardClick(msgId, kind);
+      };
+      bubble.appendChild(box);
+    }
+    function renderOfflineCard(bubble, cardJson, msgId) {
+      bubble.style.padding = '0';
+      bubble.style.background = 'transparent';
+      bubble.style.boxShadow = 'none';
+      bubble.style.border = 'none';
+      let card = {};
+      try { card = JSON.parse(cardJson || '{}'); } catch(e) {}
+      const box = document.createElement('div');
+      box.className = 'offline-card';
+      const loc = escHtml(card.location || '待定');
+      const tm = escHtml(card.time || '待定');
+      const mood = escHtml(card.mood || '');
+      const bg = escHtml(card.background || '');
+      const mask = escHtml(card.mask || '');
+      box.innerHTML = '<div class="oc-head"><div class="oc-door">&#128682;</div>' +
+        '<div><div class="oc-title">想见你</div>' +
+        '<div class="oc-sub">TA 为你推开门 · 点击进入线下</div></div></div>' +
+        '<div class="oc-body">' +
+        '<div class="oc-row"><span class="oc-label">地点：</span>' + loc + '</div>' +
+        '<div class="oc-row"><span class="oc-label">时间：</span>' + tm + (mood ? ('　氛围：' + mood) : '') + '</div>' +
+        (mask ? ('<div class="oc-row"><span class="oc-label">你的身份：</span>' + mask + '</div>') : '') +
+        (bg ? ('<div class="oc-bg">' + bg + '</div>') : '') +
+        '</div>' +
+        '<div class="oc-btn">推开门 · 进入线下</div>';
+      box.querySelector('.oc-btn').onclick = function(e) {
+        e.stopPropagation();
+        Android.onOfflineCardClick(msgId);
       };
       bubble.appendChild(box);
     }
@@ -1697,6 +1750,8 @@ inner.innerHTML = '';
           renderMusicCard(bubble, d.musicCardJson);
         } else if (d.moneyCardJson) {
           renderMoneyCard(bubble, d.moneyCardType, d.moneyCardJson, d.id || '');
+        } else if (d.offlineCardJson) {
+          renderOfflineCard(bubble, d.offlineCardJson, d.id || '');
         } else if (d.isVoice) {
           renderVoiceBubble(bubble, d.voiceDuration);
           appendVoiceTranscription(col, d);

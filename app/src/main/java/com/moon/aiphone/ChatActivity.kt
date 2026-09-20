@@ -711,6 +711,10 @@ class ChatActivity : AppCompatActivity() {
 
         var moneyCardJson = ""
         var moneyCardType = ""
+        var offlineCardJson = ""
+        if (msg.imageDesc?.startsWith("[OFFLINE_CARD]") == true) {
+            offlineCardJson = msg.imageDesc!!.removePrefix("[OFFLINE_CARD]")
+        }
         when {
             msg.imageDesc?.startsWith("[TRANSFER_CARD]") == true -> {
                 moneyCardType = "transfer"
@@ -741,6 +745,7 @@ class ChatActivity : AppCompatActivity() {
             put("musicCardJson", musicCardJson)
             put("moneyCardJson", moneyCardJson)
             put("moneyCardType", moneyCardType)
+            put("offlineCardJson", offlineCardJson)
             put("isRecalled", isRecalled)
             put("innerThoughts", innerForPopup)
             put("translatedText", msg.translatedText ?: "")
@@ -838,6 +843,10 @@ class ChatActivity : AppCompatActivity() {
         @JavascriptInterface
         fun onMoneyCardClick(msgId: String, type: String) {
             runOnUiThread { receiveMoneyCard(msgId, type) }
+        }
+        @JavascriptInterface
+        fun onOfflineCardClick(msgId: String) {
+            runOnUiThread { openOfflineFromCard(msgId) }
         }
 
         @JavascriptInterface
@@ -1561,6 +1570,51 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
         saveMsgToDb(msg, if (fromUser) 1 else 0, "")
     }
 
+    private fun addOfflineInviteCard(background: String, location: String, time: String, mood: String, mask: String) {
+        val card = JSONObject().apply {
+            put("background", background.take(300))
+            put("location", location.take(40))
+            put("time", time.take(20))
+            put("mood", mood.take(20))
+            put("mask", mask.take(80))
+        }
+        val msg = Message("🚪 [线下邀请] " + location.ifEmpty { "见面" }, false, false, false).apply {
+            timestamp = nextTimestamp()
+            imageDesc = "[OFFLINE_CARD]" + card.toString()
+        }
+        msgList.add(msg)
+        addMessageToWebView(msg)
+        saveMsgToDb(msg, 0, "")
+    }
+    private fun openOfflineFromCard(msgId: String) {
+        val ts = msgId.toLongOrNull() ?: return
+        val msg = msgList.firstOrNull { it.timestamp == ts } ?: return
+        val raw = msg.imageDesc.orEmpty()
+        if (!raw.startsWith("[OFFLINE_CARD]")) return
+        val card = try { JSONObject(raw.removePrefix("[OFFLINE_CARD]")) } catch (_: Exception) { JSONObject() }
+        val pref = getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
+        val key = "offlineActiveSession_$aiId"
+        var sessionId = pref.getString(key, "") ?: ""
+        if (sessionId.isBlank()) {
+            sessionId = "door_" + aiId + "_" + System.currentTimeMillis()
+            pref.edit().putString(key, sessionId).apply()
+        }
+        val intent = Intent(this, OfflineChatActivity::class.java).apply {
+            putExtra("AI_ID", aiId)
+            putExtra("AI_NAME", aiName)
+            putExtra("OFFLINE_SESSION_ID", sessionId)
+            putExtra("MEET_LOCATION", card.optString("location"))
+            putExtra("MEET_TIME", card.optString("time"))
+            putExtra("MEET_MOOD", card.optString("mood"))
+            putExtra("MEET_BACKGROUND", card.optString("background"))
+            putExtra("MEET_MASK", card.optString("mask"))
+            putExtra("MEET_PERSON", "第二人称")
+            putExtra("MEET_STYLE", "")
+            putExtra("MEET_SKIT", false)
+            putExtra("MEET_AKO", false)
+        }
+        startActivity(intent)
+    }
     private fun addMoneyCard(type: String, amount: Double, note: String) {
         val safeAmount = amount.coerceIn(0.01, 200000.0)
         val kind = if (type == "redpacket") "redpacket" else "transfer"
@@ -1720,6 +1774,18 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
             match.groupValues[1].toDoubleOrNull()?.let { addMoneyCard("redpacket", it, match.groupValues[2]) }
         }
         dialog = dialog.replace(redPacketRegex, "").trim()
+        val offlineInviteRegex = Regex("\\[OFFLINE_INVITE[:：]([^\\]]{0,600})\\]", RegexOption.IGNORE_CASE)
+        offlineInviteRegex.findAll(dialog).toList().forEach { match ->
+            val parts = match.groupValues[1].split('|', '｜')
+            addOfflineInviteCard(
+                parts.getOrNull(0).orEmpty().trim(),
+                parts.getOrNull(1).orEmpty().trim(),
+                parts.getOrNull(2).orEmpty().trim(),
+                parts.getOrNull(3).orEmpty().trim(),
+                parts.getOrNull(4).orEmpty().trim()
+            )
+        }
+        dialog = dialog.replace(offlineInviteRegex, "").trim()
         return dialog
     }
 
@@ -1826,6 +1892,7 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
 3. 你确实想给用户转账时，加入 [TRANSFER:金额:备注]，例如 [TRANSFER:52.00:买杯奶茶]。
 4. 你确实想发红包时，加入 [REDPACKET:金额:祝福语]，例如 [REDPACKET:8.88:恭喜发财]。
 5. 金额必须为正数且最多两位小数。转账、红包应符合人设和对话情境，偶尔使用，不能每轮发送。所有标签必须保持英文大写格式。
+6. 当剧情自然发展到你想约用户线下见面时，可在【台词】末尾加入 [OFFLINE_INVITE:前情背景|地点|时间|氛围|希望用户扮演的身份]，例如 [OFFLINE_INVITE:最近总在深夜聊天|海边|深夜|暧昧拉扯|戴围巾的人]。系统会生成“推开门”邀请卡片，用户点击即可进入线下见面；符合情境时偶尔使用，不能每轮发送。
 """.trimIndent()
 
                 val systemPrompt = """
@@ -2493,6 +2560,10 @@ $interactiveFeatureRules
                                 musicCardJson = msg.imageDesc!!.removePrefix("[MUSIC_CARD]")
                             var moneyCardJson = ""
                             var moneyCardType = ""
+                            var offlineCardJson = ""
+                            if (msg.imageDesc?.startsWith("[OFFLINE_CARD]") == true) {
+                                offlineCardJson = msg.imageDesc!!.removePrefix("[OFFLINE_CARD]")
+                            }
                             if (msg.imageDesc?.startsWith("[TRANSFER_CARD]") == true) {
                                 moneyCardType = "transfer"
                                 moneyCardJson = msg.imageDesc!!.removePrefix("[TRANSFER_CARD]")
@@ -2516,6 +2587,7 @@ $interactiveFeatureRules
                                 put("musicCardJson", musicCardJson)
                                 put("moneyCardJson", moneyCardJson)
                                 put("moneyCardType", moneyCardType)
+                                put("offlineCardJson", offlineCardJson)
                                 put("isRecalled", isRecalled)
                                 put("innerThoughts", innerForPopup)
                                 put("translatedText", msg.translatedText ?: "")
