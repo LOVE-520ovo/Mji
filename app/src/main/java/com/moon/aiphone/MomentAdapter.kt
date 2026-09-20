@@ -51,6 +51,10 @@ class MomentAdapter(private val momentList: List<Moment>, private val onDataChan
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val moment = momentList[position]
+        // ── 主题接入 ──
+        val discText = ThemeManager.getColor("--discover-text-color", android.graphics.Color.BLACK)
+        holder.tvName.setTextColor(discText)
+        holder.tvContent.setTextColor(discText)
 
         // ✅【核心修复 1】：把丢失的名字亲手交还给界面！
         holder.tvName.text = moment.name.ifEmpty { "神秘人" }
