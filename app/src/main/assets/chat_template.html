@@ -1107,6 +1107,7 @@
       try { card = JSON.parse(cardJson || '{}'); } catch(e) {}
       const kind = type === 'redpacket' ? 'redpacket' : 'transfer';
       const opened = !!card.opened;
+      const fromMe = !!card.fromMe;
       const box = document.createElement('div');
       box.className = 'money-card ' + kind + (opened ? ' opened' : '');
       const amount = Number(card.amount || 0).toFixed(2);
@@ -1115,9 +1116,9 @@
         '<div class="money-icon">' + (kind === 'redpacket' ? '🧧' : '¥') + '</div>' +
         '<div class="money-info"><div class="money-amount">¥' + escHtml(amount) + '</div>' +
         '<div class="money-note">' + escHtml(note) + '</div>' +
-        '<div class="money-state">' + (opened ? (kind === 'redpacket' ? '红包已领取' : '已收款') : '点击' + (kind === 'redpacket' ? '领取红包' : '确认收款')) + '</div></div></div>' +
+        '<div class="money-state">' + (fromMe ? '已转账' : (opened ? (kind === 'redpacket' ? '红包已领取' : '已收款') : '点击' + (kind === 'redpacket' ? '领取红包' : '确认收款'))) + '</div></div></div>' +
         '<div class="money-footer">' + (kind === 'redpacket' ? '微信红包' : '微信转账') + '</div>';
-      if (!opened) box.onclick = function(e) {
+      if (!opened && !fromMe) box.onclick = function(e) {
         e.stopPropagation();
         Android.onMoneyCardClick(msgId, kind);
       };
