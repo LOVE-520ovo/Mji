@@ -330,6 +330,74 @@ class ChatActivity : AppCompatActivity() {
         }
     }
 
+    // ── 区间总结（单聊）──────────────────────────────
+    private fun startIntervalSummary() {
+        Thread {
+            try {
+                val db = DatabaseHelper(this).writableDatabase
+                val cursor = getSharedPreferences("AppConfig", Context.MODE_PRIVATE).getLong("intervalCursor_$aiId", 0L)
+                val total = db.rawQuery(
+                    "SELECT COUNT(*) FROM ChatHistory WHERE aiId=? AND IFNULL(groupId,'')='' AND timestamp>? AND content!='' AND content!='正在输入...'",
+                    arrayOf(aiId, cursor.toString())
+                ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+                if (total <= 0) {
+                    runOnUiThread { Toast.makeText(this, "✅ 历史已经全部总结完啦", Toast.LENGTH_SHORT).show() }
+                    return@Thread
+                }
+                val take = minOf(total, 50)
+                runOnUiThread {
+                    androidx.appcompat.app.AlertDialog.Builder(this)
+                        .setTitle("📜 区间总结")
+                        .setMessage("从上次断点继续，总结最早 $take 条未总结消息（总共还剩 $total 条）。\n\n总结会存进它的长期记忆——连续、不重复。")
+                        .setPositiveButton("开始") { _, _ -> doIntervalSummary(cursor, take) }
+                        .setNegativeButton("取消", null)
+                        .show()
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    private fun doIntervalSummary(cursor: Long, count: Int) {
+        Toast.makeText(this, "正在总结 $count 条…", Toast.LENGTH_SHORT).show()
+        Thread {
+            try {
+                val db = DatabaseHelper(this).writableDatabase
+                val lines = mutableListOf<String>()
+                var lastTs = cursor
+                db.rawQuery(
+                    "SELECT content, isFromMe, timestamp FROM ChatHistory WHERE aiId=? AND IFNULL(groupId,'')='' AND timestamp>? AND content!='' AND content!='正在输入...' ORDER BY timestamp ASC LIMIT ?",
+                    arrayOf(aiId, cursor.toString(), count.toString())
+                ).use { c ->
+                    while (c.moveToNext()) {
+                        val content = (c.getString(0) ?: "").take(220)
+                        if (content.isBlank()) continue
+                        val sender = if (c.getInt(1) == 1) getMyDisplayName() else aiName
+                        lines.add("$sender: $content")
+                        lastTs = c.getLong(2)
+                    }
+                }
+                if (lines.isEmpty()) {
+                    runOnUiThread { Toast.makeText(this, "没有内容可总结", Toast.LENGTH_SHORT).show() }
+                    return@Thread
+                }
+                val chatLog = lines.joinToString("\n").takeLast(8000)
+                val dateStr = SimpleDateFormat("MM月dd日", Locale.CHINA).format(Date())
+                val summary = MemoryManager.generateIntervalSummary(this, chatLog, dateStr)
+                runOnUiThread {
+                    if (summary.isNullOrBlank()) {
+                        Toast.makeText(this, "总结失败（网络/配置），断点未推进，可重试", Toast.LENGTH_LONG).show()
+                    } else {
+                        MemoryManager.saveIntervalMemory(this, aiId, summary)
+                        getSharedPreferences("AppConfig", Context.MODE_PRIVATE).edit().putLong("intervalCursor_$aiId", lastTs).apply()
+                        Toast.makeText(this, "✅ 已总结 $count 条，断点已推进", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (_: Exception) {
+                runOnUiThread { Toast.makeText(this, "总结出错，可重试", Toast.LENGTH_SHORT).show() }
+            }
+        }.start()
+    }
+
     private var historyExportFormat = "txt"
     private val createHistoryDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         if (uri != null) {
@@ -776,17 +844,18 @@ class ChatActivity : AppCompatActivity() {
         fun onAddImage() {
             runOnUiThread {
                 val sharingToMe = ScreenShareService.isRunning && ScreenShareService.sharingAiId == aiId
-                val items = if (sharingToMe) arrayOf("发送图片", "文字图", "转账", "停止共享屏幕", "一起玩", "设置拍一拍")
-                else arrayOf("发送图片", "文字图", "转账", "共享屏幕给$aiName", "一起玩", "设置拍一拍")
+                val items = if (sharingToMe) arrayOf("发送图片", "文字图", "转账", "区间总结", "停止共享屏幕", "一起玩", "设置拍一拍")
+                else arrayOf("发送图片", "文字图", "转账", "区间总结", "共享屏幕给$aiName", "一起玩", "设置拍一拍")
                 androidx.appcompat.app.AlertDialog.Builder(this@ChatActivity)
                     .setItems(items) { _, which ->
                         when (which) {
                             0 -> pickChatImage.launch(arrayOf("image/*"))
                             1 -> showTextImageDialog()
                             2 -> showTransferDialog()
-                            3 -> if (sharingToMe) stopScreenShare() else requestScreenShare()
-                            4 -> showWhisperDialog()
-                            5 -> showPokeSettingsDialog()
+                            3 -> startIntervalSummary()
+                            4 -> if (sharingToMe) stopScreenShare() else requestScreenShare()
+                            5 -> showWhisperDialog()
+                            6 -> showPokeSettingsDialog()
                         }
                     }
                     .show()
