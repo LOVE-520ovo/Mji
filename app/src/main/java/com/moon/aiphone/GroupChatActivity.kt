@@ -863,7 +863,7 @@ class GroupChatActivity : AppCompatActivity() {
                             .use { c ->
                                 val sb = StringBuilder()
                                 while (c.moveToNext()) sb.append(c.getString(0)).append("\n")
-                                memory = sb.toString().trim().take(300)
+                                memory = sb.toString().trim().take(700)
                             }
                     } catch (_: Exception) {}
 
