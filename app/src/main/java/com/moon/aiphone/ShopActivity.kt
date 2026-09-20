@@ -432,8 +432,7 @@ class ShopActivity : AppCompatActivity() {
     private fun confirmGift(p: ShopManager.Product, aiId: String, aiName: String) {
         AlertDialog.Builder(this)
             .setTitle("送给 $aiName")
-            .setMessage("把「${p.name}」¥${ShopManager.fmt(p.price)}送给TA？
-TA会在聊天里收到这份礼物")
+            .setMessage("把「${p.name}」¥${ShopManager.fmt(p.price)}送给TA？\nTA会在聊天里收到这份礼物")
             .setPositiveButton("送出") { _, _ ->
                 ShopManager.purchase(this, p, "ai", aiId, aiName)
                 toast("已送出，去和TA聊聊吧❤️")
@@ -452,9 +451,7 @@ TA会在聊天里收到这份礼物")
     private fun confirmRequestPay(p: ShopManager.Product, aiId: String, aiName: String) {
         AlertDialog.Builder(this)
             .setTitle("求 $aiName 代付")
-            .setMessage("向TA发一张代付请求卡：
-「${p.name}」¥${ShopManager.fmt(p.price)}
-TA同意后就会显示已代付")
+            .setMessage("向TA发一张代付请求卡：\n「${p.name}」¥${ShopManager.fmt(p.price)}\nTA同意后就会显示已代付")
             .setPositiveButton("发送请求") { _, _ ->
                 ShopManager.requestPay(this, p, aiId, aiName)
                 toast("已发送，等TA回应吧")
@@ -758,7 +755,7 @@ TA同意后就会显示已代付")
                 val cats = ShopManager.listCategories(db)
                 var n = 0
                 for (i in 0 until listLayout.childCount) {
-                    val row = listLayout.getChildAt(i)
+                    val row = listLayout.getChildAt(i) as? android.view.ViewGroup ?: continue
                     val cb = row.getChildAt(0) as? CheckBox ?: continue
                     if (!cb.isChecked) continue
                     val g = cb.tag as? ShopManager.GenProduct ?: continue

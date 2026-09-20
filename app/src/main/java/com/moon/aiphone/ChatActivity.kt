@@ -1797,12 +1797,12 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
             )
         }
         dialog = dialog.replace(offlineInviteRegex, "").trim()
-        val shopPayRegex = Regex("\[SHOP_PAY_ACCEPT[:：](\d+)\]", RegexOption.IGNORE_CASE)
+        val shopPayRegex = Regex("\\[SHOP_PAY_ACCEPT[:：](\\d+)\\]", RegexOption.IGNORE_CASE)
         shopPayRegex.findAll(dialog).toList().forEach { match ->
             match.groupValues[1].toLongOrNull()?.let { acceptShopPay(it) }
         }
         dialog = dialog.replace(shopPayRegex, "").trim()
-        val shopDeclineRegex = Regex("\[SHOP_PAY_DECLINE[:：](\d+)\]", RegexOption.IGNORE_CASE)
+        val shopDeclineRegex = Regex("\\[SHOP_PAY_DECLINE[:：](\\d+)\\]", RegexOption.IGNORE_CASE)
         shopDeclineRegex.findAll(dialog).toList().forEach { match ->
             match.groupValues[1].toLongOrNull()?.let { declineShopPay(it) }
         }
@@ -1827,7 +1827,7 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
                     try {
                         callJs("updateShopPayCard(${jsStr(order.msgTs.toString())}, ${jsStr(buildPayReqCardJson(order, "paid"))})")
                     } catch (_: Exception) {}
-                    val notice = Message("✅ $aiName帮你付了「${order.name}」¥${ShopManager.fmt(order.price)}", true, true, true).apply {
+                    val notice = Message("✅ ${aiName}帮你付了「${order.name}」¥${ShopManager.fmt(order.price)}", true, true, true).apply {
                         timestamp = nextTimestamp(); imageDesc = "[POKE]"
                     }
                     msgList.add(notice); addMessageToWebView(notice); saveMsgToDb(notice, 1, "")
@@ -1844,7 +1844,7 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
                     try {
                         callJs("updateShopPayCard(${jsStr(order.msgTs.toString())}, ${jsStr(buildPayReqCardJson(order, "refused"))})")
                     } catch (_: Exception) {}
-                    val notice = Message("$aiName这次没有答应代付「${order.name}」", true, true, true).apply {
+                    val notice = Message("${aiName}这次没有答应代付「${order.name}」", true, true, true).apply {
                         timestamp = nextTimestamp(); imageDesc = "[POKE]"
                     }
                     msgList.add(notice); addMessageToWebView(notice); saveMsgToDb(notice, 1, "")
