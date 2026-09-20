@@ -383,7 +383,7 @@ ${chunkText.take(6000)}
         if (afterthought.isEmpty()) return
         Thread {
             try {
-                val memory = "和用户一起读《$bookTitle》$chunkTitle，读后感：${afterthought.take(50)}"
+                val memory = "和用户一起读《$bookTitle》$chunkTitle，读后感：${afterthought.take(200)}"
                 val cv = ContentValues().apply {
                     put("aiId", contactId)
                     put("memoryText", memory)
