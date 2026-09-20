@@ -110,6 +110,7 @@
         <activity android:name=".CalendarActivity" android:screenOrientation="portrait" />
         <activity android:name=".ScheduleDetailActivity" android:screenOrientation="portrait" />
         <activity android:name=".MemoryVaultActivity" />
+        <activity android:name=".SharedSpaceActivity" />
         <activity android:name=".MemoryDetailActivity" />
         <activity android:name=".GameCenterActivity" />
         <activity android:name=".GamePlayActivity" />
