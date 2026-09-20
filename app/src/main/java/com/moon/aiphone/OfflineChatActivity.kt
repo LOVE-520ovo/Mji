@@ -990,8 +990,8 @@ class OfflineChatActivity : AppCompatActivity() {
                 if (curP.moveToFirst() && !curP.isNull(0)) aiPersona = curP.getString(0); curP.close()
                 try {
                     val curM = dbRead.rawQuery(
-                        "SELECT memoryText FROM MemoryBank WHERE aiId=? ORDER BY insertTime DESC LIMIT 15",
-                        arrayOf(aiId)
+                        "SELECT memoryText FROM MemoryBank WHERE aiId=? OR (IFNULL(shareTargets,'')<>'' AND (shareTargets='all' OR instr(','||shareTargets||',', ','||?||',')>0)) ORDER BY insertTime DESC LIMIT 15",
+                        arrayOf(aiId, aiId)
                     )
                     val sb = StringBuilder()
                     while (curM.moveToNext()) {
