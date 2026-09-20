@@ -83,6 +83,21 @@ class ProfileFragment : Fragment() {
         view.findViewById<RelativeLayout?>(R.id.layoutTheme)?.setOnClickListener {
             startActivity(Intent(requireContext(), AppThemeSettingsActivity::class.java))
         }
+        // ── 主题接入 ──
+        ThemeManager.init(requireContext())
+        val profItemBg = ThemeManager.getColor("--profile-item-bg", android.graphics.Color.WHITE)
+        val profText = ThemeManager.getColor("--profile-text-color", android.graphics.Color.BLACK)
+        view.setBackgroundColor(ThemeManager.getColor("--profile-bg", android.graphics.Color.WHITE))
+        view.findViewById<RelativeLayout>(R.id.layoutUserInfo)?.setBackgroundColor(profItemBg)
+        view.findViewById<android.widget.LinearLayout>(R.id.layoutMenuCard)?.setBackgroundColor(profItemBg)
+        listOf(R.id.layoutLedger, R.id.layoutSport, R.id.layoutHealth, R.id.layoutTheme).forEach { rid ->
+            view.findViewById<RelativeLayout>(rid)?.let { item ->
+                for (i in 0 until item.childCount) {
+                    (item.getChildAt(i) as? TextView)?.setTextColor(profText)
+                }
+            }
+        }
+        view.findViewById<TextView>(R.id.tvMyName)?.setTextColor(profText)
 
         return view
     }
