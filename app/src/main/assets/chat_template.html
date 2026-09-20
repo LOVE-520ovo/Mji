@@ -359,6 +359,28 @@
         .offline-card .oc-bg { margin-top:8px; font-size:11px; color:rgba(255,255,255,.6); line-height:16px; max-height:48px; overflow:hidden; }
         .offline-card .oc-btn { display:block; text-align:center; padding:10px; background:#4A7C59; color:#fff; font-size:13px; font-weight:600; cursor:pointer; }
         .offline-card .oc-btn:active { filter:brightness(.9); }
+        /* Shop cards (7hao mall) */
+        .shop-card { width: min(250px, 68vw); border-radius: 10px; overflow: hidden; background: #fff; border: 1px solid #f0e4e0; box-shadow: 0 1px 4px rgba(0,0,0,.08); user-select: none; -webkit-user-select: none; }
+        .shop-card .sc-head { display:flex; align-items:center; padding:10px 12px 4px; }
+        .shop-card .sc-tag { font-size:10px; color:#FF5A3C; background:#FFF0EC; border-radius:8px; padding:2px 8px; }
+        .shop-card .sc-main { display:flex; align-items:center; padding:4px 12px 10px; }
+        .shop-card .sc-emoji { width:44px; height:44px; border-radius:10px; background:#FFF6F3; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0; }
+        .shop-card .sc-info { margin-left:10px; min-width:0; flex:1; }
+        .shop-card .sc-name { font-size:13px; font-weight:600; color:#222; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .shop-card .sc-descr { font-size:11px; color:#999; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .shop-card .sc-price { font-size:14px; color:#FF5A3C; font-weight:700; margin-top:3px; }
+        .shop-card .sc-foot { border-top:1px dashed #f0e4e0; padding:6px 12px; font-size:10px; color:#bbb; display:flex; justify-content:space-between; }
+        .shop-pay-card { width: min(250px, 68vw); border-radius: 10px; overflow: hidden; background: #fff; border: 1px solid #f5e2d8; box-shadow: 0 1px 4px rgba(0,0,0,.08); user-select: none; -webkit-user-select: none; }
+        .shop-pay-card .sp-head { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:linear-gradient(135deg,#FF7A45,#FF5A3C); color:#fff; font-size:12px; font-weight:600; }
+        .shop-pay-card .sp-body { display:flex; align-items:center; padding:10px 12px; }
+        .shop-pay-card .sp-info { margin-left:10px; min-width:0; flex:1; }
+        .shop-pay-card .sp-name { font-size:13px; font-weight:600; color:#222; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .shop-pay-card .sp-price { font-size:14px; color:#FF5A3C; font-weight:700; margin-top:2px; }
+        .shop-pay-card .sp-foot { padding:7px 12px; font-size:11px; border-top:1px dashed #f5e2d8; text-align:center; }
+        .shop-pay-card.pending .sp-foot { color:#FF9500; background:#FFF9F0; }
+        .shop-pay-card.paid .sp-foot { color:#34C759; background:#F4FBF6; }
+        .shop-pay-card.refused .sp-foot { color:#999999; background:#FAFAFA; }
+
         .money-main { display:flex; align-items:center; gap:12px; padding:15px 14px 13px; }
         .money-icon {
           width:42px; height:42px; border:2px solid rgba(255,255,255,.92);
@@ -1048,6 +1070,9 @@
         renderMusicCard(bubble, d.musicCardJson);
       } else if (d.moneyCardJson) {
         renderMoneyCard(bubble, d.moneyCardType, d.moneyCardJson, d.id || '');
+      } else if (d.shopCardJson) {
+        if (d.shopCardType === 'payreq') renderShopPayCard(bubble, d.shopCardJson, d.id || '');
+        else renderShopCard(bubble, d.shopCardJson, d.id || '');
       } else if (d.offlineCardJson) {
         renderOfflineCard(bubble, d.offlineCardJson, d.id || '');
       } else if (d.imageUri) {
@@ -1178,6 +1203,54 @@
       bubble.appendChild(box);
     }
 
+    function renderShopCard(bubble, cardJson, msgId) {
+      bubble.style.padding = '0';
+      bubble.style.background = 'transparent';
+      bubble.style.boxShadow = 'none';
+      bubble.style.border = 'none';
+      let card = {};
+      try { card = JSON.parse(cardJson || '{}'); } catch(e) {}
+      const isGift = card.variant === 'gift';
+      const box = document.createElement('div');
+      box.className = 'shop-card';
+      const emoji = escHtml(card.emoji || '🛍️');
+      const name = escHtml(card.name || '商品');
+      const descr = escHtml(card.descr || '');
+      const price = escHtml(Number(card.price || 0).toFixed(2));
+      const link = escHtml(card.link || '');
+      box.innerHTML = '<div class="sc-head"><span class="sc-tag">' + (isGift ? '🎁 礼物已送出' : '🛍️ 商品分享') + '</span></div>' +
+        '<div class="sc-main"><div class="sc-emoji">' + emoji + '</div>' +
+        '<div class="sc-info"><div class="sc-name">' + name + '</div>' +
+        (descr ? '<div class="sc-descr">' + descr + '</div>' : '') +
+        '<div class="sc-price">¥' + price + '</div></div></div>' +
+        '<div class="sc-foot"><span>' + (isGift ? '送给 TA 的心意' : '来自小手机的商城') + '</span>' +
+        (link ? '<span>' + link + '</span>' : '') + '</div>';
+      bubble.appendChild(box);
+    }
+    function renderShopPayCard(bubble, cardJson, msgId) {
+      bubble.style.padding = '0';
+      bubble.style.background = 'transparent';
+      bubble.style.boxShadow = 'none';
+      bubble.style.border = 'none';
+      let card = {};
+      try { card = JSON.parse(cardJson || '{}'); } catch(e) {}
+      const status = card.status || 'pending';
+      const box = document.createElement('div');
+      box.className = 'shop-pay-card ' + status;
+      const emoji = escHtml(card.emoji || '🛍️');
+      const name = escHtml(card.name || '商品');
+      const price = escHtml(Number(card.price || 0).toFixed(2));
+      const aiName = escHtml(card.aiName || 'TA');
+      const headText = status === 'paid' ? '✅ 已代付' : (status === 'refused' ? '💬 已婉拒' : '🙏 代付请求');
+      const footText = status === 'paid' ? (aiName + ' 帮你付了 ¥' + price + '，记得对 TA 好一点')
+        : (status === 'refused' ? (aiName + ' 这次没有答应') : ('等待 ' + aiName + ' 回应…'));
+      box.innerHTML = '<div class="sp-head"><span>' + headText + '</span></div>' +
+        '<div class="sp-body"><div class="sc-emoji">' + emoji + '</div>' +
+        '<div class="sp-info"><div class="sp-name">' + name + '</div>' +
+        '<div class="sp-price">¥' + price + '</div></div></div>' +
+        '<div class="sp-foot">' + footText + '</div>';
+      bubble.appendChild(box);
+    }
     function bindAvatarEvents(avatar, d) {
       let lastTap = 0;
       let singleTimer = null;
@@ -1750,6 +1823,9 @@ inner.innerHTML = '';
           renderMusicCard(bubble, d.musicCardJson);
         } else if (d.moneyCardJson) {
           renderMoneyCard(bubble, d.moneyCardType, d.moneyCardJson, d.id || '');
+        } else if (d.shopCardJson) {
+          if (d.shopCardType === 'payreq') renderShopPayCard(bubble, d.shopCardJson, d.id || '');
+          else renderShopCard(bubble, d.shopCardJson, d.id || '');
         } else if (d.offlineCardJson) {
           renderOfflineCard(bubble, d.offlineCardJson, d.id || '');
         } else if (d.isVoice) {
@@ -1803,6 +1879,14 @@ inner.innerHTML = '';
       if (!bubble) return;
       bubble.innerHTML = '';
       renderMoneyCard(bubble, type, cardJson, msgId);
+    }
+    function updateShopPayCard(msgId, cardJson) {
+      const row = document.querySelector('.msg-row[data-id="' + msgId + '"]');
+      if (!row) return;
+      const bubble = row.querySelector('.bubble');
+      if (!bubble) return;
+      bubble.innerHTML = '';
+      renderShopPayCard(bubble, cardJson, msgId);
     }
 
     // ================================================================

@@ -715,6 +715,15 @@ class ChatActivity : AppCompatActivity() {
         if (msg.imageDesc?.startsWith("[OFFLINE_CARD]") == true) {
             offlineCardJson = msg.imageDesc!!.removePrefix("[OFFLINE_CARD]")
         }
+        var shopCardJson = ""
+        var shopCardType = ""
+        if (msg.imageDesc?.startsWith("[SHOP_CARD]") == true) {
+            shopCardType = "product"
+            shopCardJson = msg.imageDesc!!.removePrefix("[SHOP_CARD]")
+        } else if (msg.imageDesc?.startsWith("[SHOP_PAYREQ]") == true) {
+            shopCardType = "payreq"
+            shopCardJson = msg.imageDesc!!.removePrefix("[SHOP_PAYREQ]")
+        }
         when {
             msg.imageDesc?.startsWith("[TRANSFER_CARD]") == true -> {
                 moneyCardType = "transfer"
@@ -746,6 +755,8 @@ class ChatActivity : AppCompatActivity() {
             put("moneyCardJson", moneyCardJson)
             put("moneyCardType", moneyCardType)
             put("offlineCardJson", offlineCardJson)
+            put("shopCardJson", shopCardJson)
+            put("shopCardType", shopCardType)
             put("isRecalled", isRecalled)
             put("innerThoughts", innerForPopup)
             put("translatedText", msg.translatedText ?: "")
@@ -1786,7 +1797,60 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
             )
         }
         dialog = dialog.replace(offlineInviteRegex, "").trim()
+        val shopPayRegex = Regex("\[SHOP_PAY_ACCEPT[:：](\d+)\]", RegexOption.IGNORE_CASE)
+        shopPayRegex.findAll(dialog).toList().forEach { match ->
+            match.groupValues[1].toLongOrNull()?.let { acceptShopPay(it) }
+        }
+        dialog = dialog.replace(shopPayRegex, "").trim()
+        val shopDeclineRegex = Regex("\[SHOP_PAY_DECLINE[:：](\d+)\]", RegexOption.IGNORE_CASE)
+        shopDeclineRegex.findAll(dialog).toList().forEach { match ->
+            match.groupValues[1].toLongOrNull()?.let { declineShopPay(it) }
+        }
+        dialog = dialog.replace(shopDeclineRegex, "").trim()
         return dialog
+    }
+
+    // ──商城代付结果处理（角色接受 / 婉拒）──────────────
+    private fun buildPayReqCardJson(order: ShopManager.Order, status: String): String {
+        return JSONObject().apply {
+            put("oid", order.id)
+            put("name", order.name); put("emoji", order.emoji)
+            put("price", order.price); put("status", status); put("aiName", order.aiName)
+        }.toString()
+    }
+
+    private fun acceptShopPay(orderId: Long) {
+        Thread {
+            try {
+                val order = ShopManager.markPayResult(this, orderId, "paid") ?: return@Thread
+                runOnUiThread {
+                    try {
+                        callJs("updateShopPayCard(${jsStr(order.msgTs.toString())}, ${jsStr(buildPayReqCardJson(order, "paid"))})")
+                    } catch (_: Exception) {}
+                    val notice = Message("✅ $aiName帮你付了「${order.name}」¥${ShopManager.fmt(order.price)}", true, true, true).apply {
+                        timestamp = nextTimestamp(); imageDesc = "[POKE]"
+                    }
+                    msgList.add(notice); addMessageToWebView(notice); saveMsgToDb(notice, 1, "")
+                }
+            } catch (e: Exception) { Log.e("SHOP_PAY", e.stackTraceToString()) }
+        }.start()
+    }
+
+    private fun declineShopPay(orderId: Long) {
+        Thread {
+            try {
+                val order = ShopManager.markPayResult(this, orderId, "refused") ?: return@Thread
+                runOnUiThread {
+                    try {
+                        callJs("updateShopPayCard(${jsStr(order.msgTs.toString())}, ${jsStr(buildPayReqCardJson(order, "refused"))})")
+                    } catch (_: Exception) {}
+                    val notice = Message("$aiName这次没有答应代付「${order.name}」", true, true, true).apply {
+                        timestamp = nextTimestamp(); imageDesc = "[POKE]"
+                    }
+                    msgList.add(notice); addMessageToWebView(notice); saveMsgToDb(notice, 1, "")
+                }
+            } catch (e: Exception) { Log.e("SHOP_PAY", e.stackTraceToString()) }
+        }.start()
     }
 
     private fun confirmDangerousMcpCall(binding: McpToolBinding, arguments: JSONObject): Boolean {
@@ -1893,6 +1957,7 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
 4. 你确实想发红包时，加入 [REDPACKET:金额:祝福语]，例如 [REDPACKET:8.88:恭喜发财]。
 5. 金额必须为正数且最多两位小数。转账、红包应符合人设和对话情境，偶尔使用，不能每轮发送。所有标签必须保持英文大写格式。
 6. 当剧情自然发展到你想约用户线下见面时，可在【台词】末尾加入 [OFFLINE_INVITE:前情背景|地点|时间|氛围|希望用户扮演的身份]，例如 [OFFLINE_INVITE:最近总在深夜聊天|海边|深夜|暧昧拉扯|戴围巾的人]。系统会生成“推开门”邀请卡片，用户点击即可进入线下见面；符合情境时偶尔使用，不能每轮发送。
+7. 当用户在聊天里向你发来代付请求卡片（消息中会出现“[代付请求]…（编号XX）”），如果你愿意帮她付，在【台词】末尾加入 [SHOP_PAY_ACCEPT:编号]，例如 [SHOP_PAY_ACCEPT:3]；想明确拒绝时可以加 [SHOP_PAY_DECLINE:编号]。系统会更新卡片状态。不能每轮使用，要符合人设与你们的关系。
 """.trimIndent()
 
                 val systemPrompt = """
@@ -2571,6 +2636,15 @@ $interactiveFeatureRules
                                 moneyCardType = "redpacket"
                                 moneyCardJson = msg.imageDesc!!.removePrefix("[REDPACKET_CARD]")
                             }
+                            var shopCardJson = ""
+                            var shopCardType = ""
+                            if (msg.imageDesc?.startsWith("[SHOP_CARD]") == true) {
+                                shopCardType = "product"
+                                shopCardJson = msg.imageDesc!!.removePrefix("[SHOP_CARD]")
+                            } else if (msg.imageDesc?.startsWith("[SHOP_PAYREQ]") == true) {
+                                shopCardType = "payreq"
+                                shopCardJson = msg.imageDesc!!.removePrefix("[SHOP_PAYREQ]")
+                            }
                             val isRecalled = msg.imageDesc?.startsWith("[RECALLED]") == true
                             val innerForPopup = quote.popupInner
                             jsonArr.put(JSONObject().apply {
@@ -2588,6 +2662,8 @@ $interactiveFeatureRules
                                 put("moneyCardJson", moneyCardJson)
                                 put("moneyCardType", moneyCardType)
                                 put("offlineCardJson", offlineCardJson)
+                                put("shopCardJson", shopCardJson)
+                                put("shopCardType", shopCardType)
                                 put("isRecalled", isRecalled)
                                 put("innerThoughts", innerForPopup)
                                 put("translatedText", msg.translatedText ?: "")

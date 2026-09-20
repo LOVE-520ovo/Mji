@@ -221,6 +221,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<LinearLayout>(R.id.btnOpenWorldBook).setOnClickListener {
             startActivity(Intent(this, WorldBookActivity::class.java))
         }
+        findViewById<LinearLayout>(R.id.btnOpenShop)?.setOnClickListener {
+            startActivity(Intent(this, ShopActivity::class.java))
+        }
         findViewById<LinearLayout>(R.id.btnOpenWeather)?.setOnClickListener {
             startActivity(Intent(this, WeatherActivity::class.java))
         }

@@ -128,6 +128,7 @@
         <activity android:name=".PhoneViewActivity" />
         <activity android:name=".OfflineSetupActivity" />
         <activity android:name=".SlotActivity" android:exported="false" />
+        <activity android:name=".ShopActivity" android:exported="false" />
 
 
         <service
