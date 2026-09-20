@@ -26,6 +26,14 @@ class ContactFragment : Fragment() {
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         adapter = MixedContactAdapter(itemList)
         recyclerView.adapter = adapter
+        // ── 主题接入 ──
+        ThemeManager.init(requireContext())
+        view.findViewById<android.widget.RelativeLayout>(R.id.contactHeaderBar)?.setBackgroundColor(
+            ThemeManager.getColor("--header-bg", Color.parseColor("#FFFFFF")))
+        view.findViewById<TextView>(R.id.contactHeaderTitle)?.setTextColor(
+            ThemeManager.getColor("--header-title-color", Color.BLACK))
+        val contactListBg = ThemeManager.getColor("--contact-list-bg", Color.TRANSPARENT)
+        if (contactListBg != Color.TRANSPARENT) view.setBackgroundColor(contactListBg)
         return view
     }
 
@@ -167,6 +175,11 @@ class ContactFragment : Fragment() {
 
         override fun onBindViewHolder(holder: VH, position: Int) {
             val item = list[position]
+            // ── 主题接入 ──
+            holder.itemView.setBackgroundColor(
+                ThemeManager.getColor("--contact-item-bg", Color.WHITE))
+            holder.tvName.setTextColor(
+                ThemeManager.getColor("--contact-name-color", Color.BLACK))
             if (item is GroupData) {
                 holder.tvName.text = item.name
                 val bitmap = loadBitmap(holder.itemView.context, item.avatar)
