@@ -6,11 +6,13 @@
     android:orientation="vertical">
 
     <RelativeLayout
+        android:id="@+id/contactHeaderBar"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:background="#88FFFFFF">
 
         <TextView
+            android:id="@+id/contactHeaderTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_centerInParent="true"
