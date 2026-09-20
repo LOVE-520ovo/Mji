@@ -866,18 +866,18 @@ $langBlock
                 val seconds = durationSeconds % 60
 
                 val prompt = """
-以下是今天（$today）用户和${aiName}的一段通话记录，通话时长 ${minutes}分${seconds}秒：
+以下是用户和${aiName}刚刚结束的一通电话（$today，通话时长 ${minutes}分${seconds}秒）：
 
 $callText
 
-请用50-80字总结这通电话的关键内容，以${aiName}的视角，用第一人称写，
-包含：聊了什么主题、用户说了什么重要的话、有没有约定或情绪波动。
-直接输出总结内容，不要标题不要序号。
+请以${aiName}的第一人称视角，把这段通话整理成一段详细的记忆（300字左右）：
+写清楚这通电话的主题（聊了什么、怎么聊起来的）；用户说的重要的话和具体细节（人名、事情、约定、承诺都要记下）；这通电话的前因；以及结束时的状态——情绪、有没有约定、事情有没有结论。
+用自然的第一人称语气写，像自己在回忆这通电话，不要标题不要序号，直接输出一整段。
             """.trimIndent()
 
                 val body = JSONObject().apply {
                     put("model", model)
-                    put("max_tokens", 800)
+                    put("max_tokens", 1500)
                     put("messages", JSONArray().apply {
                         put(JSONObject().apply { put("role", "user"); put("content", prompt) })
                     })
