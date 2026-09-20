@@ -45,6 +45,7 @@ object MemoryManager {
 
     private fun ensureMemorySchema(db: android.database.sqlite.SQLiteDatabase) {
         try { db.execSQL("ALTER TABLE MemoryBank ADD COLUMN embedding TEXT DEFAULT ''") } catch (_: Exception) {}
+        try { db.execSQL("ALTER TABLE MemoryBank ADD COLUMN shareTargets TEXT DEFAULT ''") } catch (_: Exception) {}
         try { db.execSQL("CREATE INDEX IF NOT EXISTS idx_memory_ai_category_time ON MemoryBank(aiId, category, insertTime)") } catch (_: Exception) {}
         try { db.execSQL("CREATE INDEX IF NOT EXISTS idx_chat_ai_group_time ON ChatHistory(aiId, groupId, timestamp)") } catch (_: Exception) {}
     }
@@ -387,8 +388,8 @@ $aiMsg
             data class MemoryRow(val id: Long, val text: String, val category: String, var embStr: String)
             val rows = mutableListOf<MemoryRow>()
             db.rawQuery(
-                "SELECT id, memoryText, category, IFNULL(embedding,'') FROM MemoryBank WHERE aiId=? ORDER BY insertTime DESC LIMIT $RECALL_MAX_ROWS",
-                arrayOf(aiId)
+                "SELECT id, memoryText, category, IFNULL(embedding,'') FROM MemoryBank WHERE aiId=? OR (IFNULL(shareTargets,'')<>'' AND (shareTargets='all' OR instr(','||shareTargets||',', ','||?||',')>0)) ORDER BY insertTime DESC LIMIT $RECALL_MAX_ROWS",
+                arrayOf(aiId, aiId)
             ).use { c ->
                 while (c.moveToNext()) {
                     rows.add(MemoryRow(c.getLong(0), c.getString(1) ?: "", c.getString(2) ?: "misc", c.getString(3) ?: ""))
@@ -397,7 +398,7 @@ $aiMsg
             if (rows.isEmpty()) return ""
 
             // key_event 和手动记忆永远全量保留（这些通常条数少）
-            val alwaysInclude = setOf("key_event", "user_info", "shared_event", "future_plan", "pet_bond")
+            val alwaysInclude = setOf("key_event", "user_info", "shared_event", "future_plan", "pet_bond", "shared")
             val fixed = rows.filter { it.category in alwaysInclude }.take(6).map { it.text.take(300) }
 
             val candidates = rows.filter { it.category !in alwaysInclude }
