@@ -20,10 +20,10 @@ fun Cursor.getSafeLong(columnName: String): Long {
     return if (idx != -1) this.getLong(idx) else 0L
 }
 
-class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "AiPhone.db", null, 24){
+class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "AiPhone.db", null, 25){
 
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE MemoryBank (id INTEGER PRIMARY KEY AUTOINCREMENT, aiId TEXT, memoryText TEXT, category TEXT DEFAULT 'misc', insertTime INTEGER)")
+        db.execSQL("CREATE TABLE MemoryBank (id INTEGER PRIMARY KEY AUTOINCREMENT, aiId TEXT, memoryText TEXT, category TEXT DEFAULT 'misc', insertTime INTEGER, shareTargets TEXT DEFAULT '')")
         db.execSQL("CREATE TABLE Contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT UNIQUE, realName TEXT, birthday TEXT, identityInfo TEXT, avatarUri TEXT, appearance TEXT DEFAULT '', patience INTEGER DEFAULT 60, relationship TEXT DEFAULT '普通朋友', presetOnline TEXT DEFAULT '', presetOffline TEXT DEFAULT '', lockPassword TEXT DEFAULT '', userNicknameByAi TEXT DEFAULT '', isPinned INTEGER DEFAULT 0)")
         db.execSQL("CREATE TABLE Moments (id INTEGER PRIMARY KEY AUTOINCREMENT, aiId TEXT, content TEXT, translatedText TEXT DEFAULT '', imageDesc TEXT, timestamp INTEGER)")
         db.execSQL("CREATE TABLE MyProfile (id INTEGER PRIMARY KEY AUTOINCREMENT, myName TEXT, myId TEXT, gender TEXT, birthday TEXT, mbti TEXT, identity TEXT, myAvatarUri TEXT)")
@@ -221,7 +221,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "AiPhone.db",
             try { db.execSQL("CREATE TABLE IF NOT EXISTS UserWorldBook (id INTEGER PRIMARY KEY AUTOINCREMENT, aiId TEXT, keyword TEXT, content TEXT)") } catch (_: Exception) {}
         }
         if (oldVersion < 6) {
-            try { db.execSQL("CREATE TABLE IF NOT EXISTS MemoryBank (id INTEGER PRIMARY KEY AUTOINCREMENT, aiId TEXT, memoryText TEXT, category TEXT DEFAULT 'misc', insertTime INTEGER)") } catch (_: Exception) {}
+            try { db.execSQL("CREATE TABLE IF NOT EXISTS MemoryBank (id INTEGER PRIMARY KEY AUTOINCREMENT, aiId TEXT, memoryText TEXT, category TEXT DEFAULT 'misc', insertTime INTEGER, shareTargets TEXT DEFAULT '')") } catch (_: Exception) {}
             try { addColumnIfMissing("Contacts", "patience", "INTEGER DEFAULT 60") } catch (_: Exception) {}
         }
         if (oldVersion < 7) {
@@ -300,6 +300,9 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "AiPhone.db",
             try { addColumnIfMissing("GroupMembers", "nickname", "TEXT DEFAULT ''") } catch (_: Exception) {}
             try { addColumnIfMissing("GroupMembers", "title", "TEXT DEFAULT ''") } catch (_: Exception) {}
             try { addColumnIfMissing("GroupMembers", "isOwner", "INTEGER DEFAULT 0") } catch (_: Exception) {}
+        }
+        if (oldVersion < 25) {
+            try { addColumnIfMissing("MemoryBank", "shareTargets", "TEXT DEFAULT ''") } catch (_: Exception) {}
         }
     }
 
