@@ -440,6 +440,37 @@ $aiMsg
     // ══════════════════════════════════════════════
     // 工具函数
     // ══════════════════════════════════════════════
+    // ══════════════════════════════════════════════
+    // 区间总结（手动接力）
+    // ══════════════════════════════════════════════
+    fun generateIntervalSummary(context: Context, chatLog: String, dateStr: String): String? {
+        return try {
+            val sharedPref = context.getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
+            val url = sharedPref.getString("apiUrl", "") ?: return null
+            val key = sharedPref.getString("apiKey", "") ?: return null
+            val model = sharedPref.getString("modelName", "") ?: return null
+            if (url.isEmpty() || key.isEmpty() || model.isEmpty()) return null
+            val prompt = """
+请把以下聊天记录总结为一段详细的长期记忆（300字左右）。
+要求：
+1. 写清楚：这段聊天的主题、关键情节和细节（说过的重要的话、喜好、约定、承诺）、情绪变化和转折、前因后果
+2. 用第三人称连贯描述
+3. 开头标注：$dateStr
+聊天记录：
+$chatLog
+            """.trimIndent()
+            callApi(buildUrl(url), key, model, prompt)
+        } catch (_: Exception) { null }
+    }
+
+    fun saveIntervalMemory(context: Context, aiId: String, summary: String) {
+        try {
+            val db = DatabaseHelper(context.applicationContext).writableDatabase
+            ensureMemorySchema(db)
+            insertMemory(context.applicationContext, db, aiId, "【区间总结】${summary.take(900)}", "interval", computeEmbedding = true)
+        } catch (_: Exception) {}
+    }
+
     private fun buildUrl(url: String): String {
         var u = if (url.endsWith("/")) url.dropLast(1) else url
         if (!u.endsWith("/chat/completions")) {
