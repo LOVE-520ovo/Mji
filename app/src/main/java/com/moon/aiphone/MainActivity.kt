@@ -50,7 +50,7 @@ class MainActivity : AppCompatActivity() {
         override fun run() {
             try {
                 val tvTime = findViewById<TextView>(R.id.tvDesktopTime)
-                tvTime.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                tvTime.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(VirtualTime.nowMs(this@MainActivity)))
                 clockHandler.postDelayed(this, 1000)
             } catch (e: Exception) {}
         }
@@ -225,7 +225,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, WeatherActivity::class.java))
         }
         findViewById<LinearLayout>(R.id.btnOpenCalendar)?.setOnClickListener {
-            startActivity(Intent(this, CalendarActivity::class.java))
+            startActivity(Intent(this, VirtualTimeActivity::class.java))
         }
 // ViewPager2 桌面分页
         val desktopViewPager = findViewById<ViewPager2>(R.id.desktopViewPager)
@@ -674,6 +674,7 @@ body {
             gl.removeAllViews()
             gl.rowCount = 1
             val cal = Calendar.getInstance()
+            cal.timeInMillis = VirtualTime.nowMs(this)
             val currentDay = cal.get(Calendar.DAY_OF_MONTH)
             val currentMonth = cal.get(Calendar.MONTH)
             val currentYear = cal.get(Calendar.YEAR)

@@ -108,6 +108,7 @@
         <activity android:name=".AddMomentActivity" android:screenOrientation="portrait" />
         <activity android:name=".MyCalendarActivity" android:screenOrientation="portrait" />
         <activity android:name=".CalendarActivity" android:screenOrientation="portrait" />
+        <activity android:name=".VirtualTimeActivity" android:screenOrientation="portrait" />
         <activity android:name=".ScheduleDetailActivity" android:screenOrientation="portrait" />
         <activity android:name=".MemoryVaultActivity" />
         <activity android:name=".SharedSpaceActivity" />

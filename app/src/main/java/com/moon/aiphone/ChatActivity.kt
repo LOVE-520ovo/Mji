@@ -1615,7 +1615,7 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
     }
 
     // —— 虚拟时间（时间线）——
-    private fun vtOffsetMs(): Long = getSharedPreferences("AppConfig", Context.MODE_PRIVATE).getLong("virtualOffsetMs", 0L)
+    private fun vtOffsetMs(): Long = VirtualTime.offsetMs(this)
     private fun vtNow(): java.util.Date = java.util.Date(System.currentTimeMillis() + vtOffsetMs())
     private fun vtHour(): Int { val c = java.util.Calendar.getInstance(); c.time = vtNow(); return c.get(java.util.Calendar.HOUR_OF_DAY) }
     private fun vtFormat(ms: Long): String = SimpleDateFormat("yyyy年MM月dd日 EEEE HH:mm", Locale.CHINA).format(java.util.Date(ms))
