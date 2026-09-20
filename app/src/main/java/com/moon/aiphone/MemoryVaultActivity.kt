@@ -20,6 +20,9 @@ class MemoryVaultActivity : AppCompatActivity() {
         supportActionBar?.hide()
 
         findViewById<TextView>(R.id.btnBack).setOnClickListener { finish() }
+        findViewById<TextView>(R.id.btnSharedSpace).setOnClickListener {
+            startActivity(Intent(this, SharedSpaceActivity::class.java))
+        }
 
         val rv = findViewById<RecyclerView>(R.id.rvMemoryContacts)
         rv.layoutManager = LinearLayoutManager(this)
