@@ -266,6 +266,70 @@ class ChatActivity : AppCompatActivity() {
         return bmp
     }
 
+    // ── 转账（用户 → 角色）──────────────────────────────
+    private fun showTransferDialog() {
+        runOnUiThread {
+            val amountInput = EditText(this)
+            amountInput.hint = "金额（元）"
+            amountInput.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            val noteInput = EditText(this)
+            noteInput.hint = "备注（可选，如：买杯奶茶）"
+            val pad = (24 * resources.displayMetrics.density).toInt()
+            val container = android.widget.LinearLayout(this)
+            container.orientation = android.widget.LinearLayout.VERTICAL
+            container.setPadding(pad, pad / 2, pad, 0)
+            container.addView(amountInput)
+            container.addView(noteInput)
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("💸 转账给 $aiName")
+                .setView(container)
+                .setPositiveButton("转账") { _, _ ->
+                    val amt = amountInput.text.toString().trim().toDoubleOrNull()
+                    if (amt == null || amt <= 0) {
+                        Toast.makeText(this, "请输入正确金额", Toast.LENGTH_SHORT).show()
+                    } else {
+                        sendTransfer(amt, noteInput.text.toString().trim())
+                    }
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
+    private fun sendTransfer(amount: Double, note: String) {
+        try {
+            val safe = amount.coerceIn(0.01, 200000.0)
+            val card = JSONObject().apply {
+                put("amount", safe)
+                put("note", note.trim().take(40))
+                put("opened", true)
+                put("fromMe", true)
+            }
+            val msg = Message("[转账] ¥${"%.2f".format(Locale.US, safe)} ${note.trim()}", true, false, false).apply {
+                timestamp = nextTimestamp()
+                imageDesc = "[TRANSFER_CARD]" + card.toString()
+            }
+            msgList.add(msg)
+            addMessageToWebView(msg)
+            saveMsgToDb(msg, 1, "")
+            try {
+                val db = DatabaseHelper(this).writableDatabase
+                db.execSQL("CREATE TABLE IF NOT EXISTS LedgerRecords (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, category TEXT, amount REAL, note TEXT, dateStr TEXT, timestamp INTEGER)")
+                db.insert("LedgerRecords", null, ContentValues().apply {
+                    put("type", "expense")
+                    put("category", "转账")
+                    put("amount", safe)
+                    put("note", "转账给$aiName")
+                    put("dateStr", SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+                    put("timestamp", System.currentTimeMillis())
+                })
+            } catch (e: Exception) { Log.e("MONEY_CARD", e.stackTraceToString()) }
+            startPatienceTimer()
+        } catch (e: Exception) {
+            Toast.makeText(this, "转账失败：${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private var historyExportFormat = "txt"
     private val createHistoryDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         if (uri != null) {
@@ -712,16 +776,17 @@ class ChatActivity : AppCompatActivity() {
         fun onAddImage() {
             runOnUiThread {
                 val sharingToMe = ScreenShareService.isRunning && ScreenShareService.sharingAiId == aiId
-                val items = if (sharingToMe) arrayOf("发送图片", "文字图", "停止共享屏幕", "一起玩", "设置拍一拍")
-                else arrayOf("发送图片", "文字图", "共享屏幕给$aiName", "一起玩", "设置拍一拍")
+                val items = if (sharingToMe) arrayOf("发送图片", "文字图", "转账", "停止共享屏幕", "一起玩", "设置拍一拍")
+                else arrayOf("发送图片", "文字图", "转账", "共享屏幕给$aiName", "一起玩", "设置拍一拍")
                 androidx.appcompat.app.AlertDialog.Builder(this@ChatActivity)
                     .setItems(items) { _, which ->
                         when (which) {
                             0 -> pickChatImage.launch(arrayOf("image/*"))
                             1 -> showTextImageDialog()
-                            2 -> if (sharingToMe) stopScreenShare() else requestScreenShare()
-                            3 -> showWhisperDialog()
-                            4 -> showPokeSettingsDialog()
+                            2 -> showTransferDialog()
+                            3 -> if (sharingToMe) stopScreenShare() else requestScreenShare()
+                            4 -> showWhisperDialog()
+                            5 -> showPokeSettingsDialog()
                         }
                     }
                     .show()
