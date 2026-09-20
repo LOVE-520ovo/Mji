@@ -75,7 +75,7 @@ class MailboxBridge(private val context: Context, private val db: DatabaseHelper
     fun onLetterAnswered(aiId: String, question: String, answer: String) {
         try {
             val dateStr = java.text.SimpleDateFormat("MM月dd日", java.util.Locale.getDefault()).format(java.util.Date())
-            val memoryText = "【匿名信箱 $dateStr】收到匿名提问：「${question.take(50)}」，回答了：「${answer.take(80)}」"
+            val memoryText = "【匿名信箱 $dateStr】收到匿名提问：「${question.take(100)}」，回答了：「${answer.take(150)}」"
             val cv = android.content.ContentValues().apply {
                 put("aiId", aiId)
                 put("memoryText", memoryText)
