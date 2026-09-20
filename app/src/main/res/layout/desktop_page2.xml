@@ -214,10 +214,33 @@
                 android:shadowRadius="2" />
         </LinearLayout>
 
-        <Space
+        <!-- 档位 -->
+        <LinearLayout
+            android:id="@+id/btnOpenSlots"
             android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:elevation="8dp">
+            <ImageView
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:src="@drawable/ic_slots"
+                android:scaleType="centerInside"
+                android:padding="13dp"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="档位"
+                android:textColor="#000000"
+                android:textSize="13sp"
+                android:shadowColor="#66000000"
+                android:shadowDx="1"
+                android:shadowDy="1"
+                android:shadowRadius="2"/>
+        </LinearLayout>
 
     </LinearLayout>
 

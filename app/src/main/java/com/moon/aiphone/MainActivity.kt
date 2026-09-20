@@ -387,6 +387,9 @@ class MainActivity : AppCompatActivity() {
         view.findViewById<View>(R.id.btnOpenPetHouse)?.setOnClickListener {
             startActivity(Intent(this, PetHouseActivity::class.java))
         }
+        view.findViewById<View>(R.id.btnOpenSlots)?.setOnClickListener {
+            startActivity(Intent(this, SlotActivity::class.java))
+        }
     }
 
     private fun loadWallpaper() {

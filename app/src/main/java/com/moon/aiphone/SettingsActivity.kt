@@ -27,41 +27,17 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var switchDreamHouse: android.widget.Switch
     private lateinit var editImgNegativePrompt: EditText
     private lateinit var editImgUserPrompt: EditText
-    // ⚡ 抽出脑浆（导出存档）的引渡专员
-    private val exportDbLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+    // ⚡ 全量备份导出：打包 zip 存到我选的文件夹
+    private val exportDbLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) {
-            try {
-                val dbFile = getDatabasePath("AiPhone.db")
-                if (!dbFile.exists()) {
-                    Toast.makeText(this, "还没造出世界呢，没有存档可导！", Toast.LENGTH_SHORT).show()
-                    return@registerForActivityResult
-                }
-                contentResolver.openOutputStream(uri)?.use { output ->
-                    java.io.FileInputStream(dbFile).use { input ->
-                        input.copyTo(output)
-                    }
-                }
-                Toast.makeText(this, "已存档", Toast.LENGTH_LONG).show()
-            } catch (e: Exception) {
-                Toast.makeText(this, "导出暴毙: \${e.message}", Toast.LENGTH_SHORT).show()
-            }
+            Thread { AppBackup.exportTo(this, uri) }.start()
         }
     }
 
-    // ⚡ 注入前世（导入存档）的夺舍专员
+    // ⚡ 从手机文件导入全量备份（zip）
     private val importDbLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            try {
-                val dbFile = getDatabasePath("AiPhone.db")
-                contentResolver.openInputStream(uri)?.use { input ->
-                    java.io.FileOutputStream(dbFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                Toast.makeText(this, "已读档，请重启", Toast.LENGTH_LONG).show()
-            } catch (e: Exception) {
-                Toast.makeText(this, "导入暴毙: \${e.message}", Toast.LENGTH_SHORT).show()
-            }
+            AppBackup.importFrom(this, uri)
         }
     }
 
@@ -454,65 +430,18 @@ class SettingsActivity : AppCompatActivity() {
         btnBack.setOnClickListener { finish() }
 
         findViewById<TextView>(R.id.btnExportDatabase).setOnClickListener {
-            CyberBackupManager.backupAll(this)
+            val stamp = java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.CHINA).format(java.util.Date())
+            exportDbLauncher.launch("Mji全量备份_" + stamp + ".zip")
         }
         findViewById<TextView>(R.id.btnImportDatabase).setOnClickListener {
-            CyberBackupManager.restoreAll(this)
-        }
-    }
-}
-
-object CyberBackupManager {
-    fun backupAll(context: android.content.Context) {
-        try {
-            val backupDir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "AiPhone_Backup")
-            if (!backupDir.exists()) backupDir.mkdirs()
-
-            val dbFile = context.getDatabasePath("AiPhone.db")
-            if (dbFile.exists()) dbFile.copyTo(java.io.File(backupDir, "AiPhone.db"), overwrite = true)
-
-            val prefsDir = java.io.File(context.applicationInfo.dataDir, "shared_prefs")
-            if (prefsDir.exists()) {
-                val backupPrefsDir = java.io.File(backupDir, "shared_prefs")
-                if (!backupPrefsDir.exists()) backupPrefsDir.mkdirs()
-                prefsDir.listFiles()?.forEach { file ->
-                    file.copyTo(java.io.File(backupPrefsDir, file.name), overwrite = true)
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("从文件导入全量备份")
+                .setMessage("将用你选择的备份文件覆盖【当前档位】的全部数据，并自动重启应用。\n\n建议先把当前档位导出一次做保险。确定继续？")
+                .setPositiveButton("选择文件") { _, _ ->
+                    importDbLauncher.launch(arrayOf("*/*"))
                 }
-            }
-            android.widget.Toast.makeText(context, "✅ 全量存档成功！已死死锁进 Downloads/AiPhone_Backup 文件夹！", android.widget.Toast.LENGTH_LONG).show()
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(context, "存档失败: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-        }
-    }
-
-    fun restoreAll(context: android.content.Context) {
-        try {
-            val backupDir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "AiPhone_Backup")
-            if (!backupDir.exists()) {
-                android.widget.Toast.makeText(context, "❌ 没找到存档文件！你是不是还没存过？", android.widget.Toast.LENGTH_SHORT).show()
-                return
-            }
-
-            val backupDb = java.io.File(backupDir, "AiPhone.db")
-            val dbFile = context.getDatabasePath("AiPhone.db")
-            if (backupDb.exists()) backupDb.copyTo(dbFile, overwrite = true)
-
-            val backupPrefsDir = java.io.File(backupDir, "shared_prefs")
-            val prefsDir = java.io.File(context.applicationInfo.dataDir, "shared_prefs")
-            if (backupPrefsDir.exists()) {
-                if (!prefsDir.exists()) prefsDir.mkdirs()
-                backupPrefsDir.listFiles()?.forEach { file ->
-                    file.copyTo(java.io.File(prefsDir, file.name), overwrite = true)
-                }
-            }
-            android.widget.Toast.makeText(context, "🔥 读档成功！APP即将自杀重启以强行生效...", android.widget.Toast.LENGTH_LONG).show()
-
-            Thread {
-                Thread.sleep(1500)
-                kotlin.system.exitProcess(0)
-            }.start()
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(context, "读档失败: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                .setNegativeButton("取消", null)
+                .show()
         }
     }
 }
