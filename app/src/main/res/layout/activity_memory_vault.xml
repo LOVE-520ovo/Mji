@@ -30,6 +30,14 @@
             android:textColor="#FFFFFF"
             android:textSize="18sp"
             android:textStyle="bold" />
+        <TextView
+            android:id="@+id/btnSharedSpace"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔗 共享空间"
+            android:textColor="#AAAAFF"
+            android:textSize="14sp"
+            android:paddingStart="12dp" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
