@@ -869,7 +869,7 @@ class GroupChatActivity : AppCompatActivity() {
                             .use { c -> if (c.moveToFirst()) relationship = c.getString(0) }
                     } catch (_: Exception) {}
                     try {
-                        db.rawQuery("SELECT memoryText FROM MemoryBank WHERE aiId=? ORDER BY insertTime DESC LIMIT 5", arrayOf(id))
+                        db.rawQuery("SELECT memoryText FROM MemoryBank WHERE aiId=? OR (IFNULL(shareTargets,'')<>'' AND (shareTargets='all' OR instr(','||shareTargets||',', ','||?||',')>0)) ORDER BY insertTime DESC LIMIT 5", arrayOf(id, id))
                             .use { c ->
                                 val sb = StringBuilder()
                                 while (c.moveToNext()) sb.append(c.getString(0)).append("\n")
@@ -1375,8 +1375,8 @@ $guideStr
                     contactCursor.close()
                     var cyberMemory = ""
                     val memoryCursor = db.rawQuery(
-                        "SELECT memoryText FROM MemoryBank WHERE aiId=? ORDER BY insertTime DESC LIMIT 5",
-                        arrayOf(aiId)
+                        "SELECT memoryText FROM MemoryBank WHERE aiId=? OR (IFNULL(shareTargets,'')<>'' AND (shareTargets='all' OR instr(','||shareTargets||',', ','||?||',')>0)) ORDER BY insertTime DESC LIMIT 5",
+                        arrayOf(aiId, aiId)
                     )
                     val memSb = StringBuilder()
                     while (memoryCursor.moveToNext()) {
