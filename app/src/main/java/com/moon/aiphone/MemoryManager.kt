@@ -34,7 +34,7 @@ object MemoryManager {
             val db = DatabaseHelper(context.applicationContext).writableDatabase
             ensureMemorySchema(db)
             val category = if (isBond) "pet_bond" else "pet_event"
-            insertMemory(context.applicationContext, db, aiId, memoryText.take(500), category)
+            insertMemory(context.applicationContext, db, aiId, memoryText.take(800), category)
             val keep = if (isBond) 30 else 150
             db.execSQL(
                 "DELETE FROM MemoryBank WHERE id IN (SELECT id FROM MemoryBank WHERE aiId=? AND category=? ORDER BY insertTime DESC LIMIT -1 OFFSET ?)",
@@ -247,7 +247,7 @@ object MemoryManager {
 请将以下对话总结为「$aiName」的长期记忆片段。
 要求：
 1. 保留关键情节、$myRealName 的喜好、重要承诺、情绪变化
-2. 用第三人称简洁描述，100字以内，称呼对方时用「$myRealName」而不是「用户」
+2. 详细一些（300字左右），写清楚：发生了什么（主题）、关键情节和细节（${myRealName}说过的重要的话、喜好、约定、承诺）、情绪变化和转折、前因后果；用第三人称连贯描述，称呼对方时用「$myRealName」而不是「用户」
 3. 开头标注时间：$todayStr
 
 对话内容：
@@ -260,7 +260,7 @@ $chatLog
                     sharedPref.edit().putInt(lastCountKey, totalCount).apply()
                     return@Thread
                 }
-                val memoryText = "[时间线]${summary.take(300)}"
+                val memoryText = "[时间线]${summary.take(600)}"
 
                 // 只有这里（30条消息触发的总结）才现算并储存向量
                 insertMemory(context, db, aiId, memoryText, "timeline", computeEmbedding = true)
@@ -314,9 +314,9 @@ DELETE FROM MemoryBank WHERE id IN (
 
                 val dateStr = java.text.SimpleDateFormat("MM月dd日", java.util.Locale.CHINA).format(java.util.Date())
                 val prompt = """
-以下是一段对话中的关键时刻，请用一句话（30字以内）提炼为核心记忆片段。
+以下是一段对话中的关键时刻，请提炼为核心记忆片段（100字左右）：写清楚发生了什么、关键细节和情绪意义。
 格式：[$dateStr] + 一句话描述
-只输出这一句话，不要其他内容。
+直接输出记忆文本，不要其他内容。
 
 对话：
 我：${userMsg.take(300)}
@@ -358,7 +358,19 @@ DELETE FROM MemoryBank WHERE id IN (
                 ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
                 if (existCount >= 3) return@Thread
 
-                insertMemory(context, db, aiId, "[$dateStr] $aiName 说：${aiMsg.take(80)}", "ai_life")
+                // 用 LLM 提炼成更详细的生活记忆（失败时退回截取）
+                val lifePref = context.getSharedPreferences("AppConfig", Context.MODE_PRIVATE)
+                val lifeUrl = lifePref.getString("apiUrl", "") ?: ""
+                val lifeKey = lifePref.getString("apiKey", "") ?: ""
+                val lifeModel = lifePref.getString("modelName", "") ?: ""
+                val refined = if (lifeUrl.isNotEmpty() && lifeKey.isNotEmpty() && lifeModel.isNotEmpty()) {
+                    val lifePrompt = """
+以下是${aiName}最近说的一句话。请把它整理成一条详细的生活记忆（100-150字）：保留具体细节（去了哪、做了什么、见了谁、感受），自然连贯，只输出记忆文本，不要前缀。
+$aiMsg
+                    """.trimIndent()
+                    callApi(buildUrl(lifeUrl), lifeKey, lifeModel, lifePrompt)?.takeIf { it.isNotBlank() }
+                } else null
+                insertMemory(context, db, aiId, "[$dateStr] $aiName：${refined ?: aiMsg.take(200)}", "ai_life")
             } catch (_: Exception) {}
         }.start()
     }
@@ -386,10 +398,10 @@ DELETE FROM MemoryBank WHERE id IN (
 
             // key_event 和手动记忆永远全量保留（这些通常条数少）
             val alwaysInclude = setOf("key_event", "user_info", "shared_event", "future_plan", "pet_bond")
-            val fixed = rows.filter { it.category in alwaysInclude }.take(6).map { it.text.take(180) }
+            val fixed = rows.filter { it.category in alwaysInclude }.take(6).map { it.text.take(300) }
 
             val candidates = rows.filter { it.category !in alwaysInclude }
-            if (candidates.isEmpty()) return fixed.distinct().joinToString("\n").take(900)
+            if (candidates.isEmpty()) return fixed.distinct().joinToString("\n").take(1600)
 
             // 关键词本地打分：无向量配置时的主力，也是向量失败时的兜底
             val keywords = currentMsg
@@ -411,17 +423,17 @@ DELETE FROM MemoryBank WHERE id IN (
                     val score = if (vec != null) cosineSimilarity(queryVec, vec)
                                 else localScore(row.text).toFloat() / 100f
                     Pair(row.text, score)
-                }.sortedByDescending { it.second }.take(5).map { it.first.take(240) }
+                }.sortedByDescending { it.second }.take(5).map { it.first.take(300) }
             } else {
                 // 没启用向量记忆 / 向量请求失败 → 纯关键词召回
                 candidates
                     .map { Pair(it, localScore(it.text)) }
                     .sortedWith(compareByDescending<Pair<MemoryRow, Int>> { it.second }.thenByDescending { it.first.id })
                     .take(5)
-                    .map { it.first.text.take(240) }
+                    .map { it.first.text.take(300) }
             }
 
-            (fixed + scored).distinct().joinToString("\n").take(900)
+            (fixed + scored).distinct().joinToString("\n").take(1600)
         } catch (_: Exception) { "" }
     }
 
