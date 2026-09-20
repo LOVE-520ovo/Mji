@@ -2864,8 +2864,8 @@ $interactiveFeatureRules
                 db.query("Contacts", null, "userId=?", arrayOf(aiId), null, null, null).use { c ->
                     if (c.moveToFirst()) aiPersona = c.getSafeString("identityInfo")
                 }
-                db.rawQuery("SELECT memoryText FROM MemoryBank WHERE aiId=? ORDER BY insertTime DESC LIMIT 15",
-                    arrayOf(aiId)).use { c ->
+                db.rawQuery("SELECT memoryText FROM MemoryBank WHERE aiId=? OR (IFNULL(shareTargets,'')<>'' AND (shareTargets='all' OR instr(','||shareTargets||',', ','||?||',')>0)) ORDER BY insertTime DESC LIMIT 15",
+                    arrayOf(aiId, aiId)).use { c ->
                     val sb = StringBuilder()
                     while (c.moveToNext()) sb.append(c.getString(0)).append("\n")
                     cyberMemory = sb.toString().trim()
