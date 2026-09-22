@@ -156,7 +156,7 @@ class ChatActivity : AppCompatActivity() {
                 androidx.appcompat.app.AlertDialog.Builder(this)
                     .setTitle("预览")
                     .setView(scroll)
-                    .setPositiveButton("发送") { _, _ -> sendTextImage(bmp) }
+                    .setPositiveButton("发送") { _, _ -> sendTextImage(bmp, text) }
                     .setNeutralButton("重写") { _, _ -> showTextImageDialog() }
                     .setNegativeButton("取消", null)
                     .show()
@@ -164,7 +164,7 @@ class ChatActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun sendTextImage(bmp: Bitmap) {
+    private fun sendTextImage(bmp: Bitmap, text: String) {
         Thread {
             try {
                 val dir = File(filesDir, "text_images")
@@ -173,7 +173,7 @@ class ChatActivity : AppCompatActivity() {
                 FileOutputStream(f).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 runOnUiThread {
                     val base64 = uriToBase64DataUri(f.absolutePath)
-                    val myMsg = Message("【图片】", true, false, false).apply {
+                    val myMsg = Message("【文字图】" + text.take(300), true, false, false).apply {
                         imageDesc = f.absolutePath
                         timestamp = nextTimestamp()
                     }
@@ -3192,6 +3192,11 @@ ${if (survData.isNotEmpty()) "【你刚查到的她的真实动态】：\n$survD
 
         // ★ 用户发的真实照片 → 用多模态格式把图真正发给模型（而不是只发"【图片】"两个字）
         val imgDesc = msg.imageDesc ?: ""
+        //文字图：本质上是文字卡，但角色视角=一张内容为该文字的照片
+        if (msg.isFromMe && msg.content.startsWith("【文字图】")) {
+            arr.put(JSONObject().apply { put("role", role); put("content", "$timeTag我发了一张照片：" + msg.content.removePrefix("【文字图】")) })
+            return
+        }
         val looksLikePhoto = msg.isFromMe &&
                 (msg.content == "【图片】" || imgDesc.startsWith("[REAL_IMG]") ||
                         imgDesc.startsWith("content://") || imgDesc.startsWith("file://") || imgDesc.startsWith("/"))

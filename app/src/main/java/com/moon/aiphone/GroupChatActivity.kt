@@ -1276,14 +1276,14 @@ $guideStr
                 androidx.appcompat.app.AlertDialog.Builder(this)
                     .setTitle("预览")
                     .setView(scroll)
-                    .setPositiveButton("发送") { _, _ -> sendGroupTextImage(bmp) }
+                    .setPositiveButton("发送") { _, _ -> sendGroupTextImage(bmp, text) }
                     .setNegativeButton("取消", null)
                     .show()
             }
         }.start()
     }
 
-    private fun sendGroupTextImage(bmp: android.graphics.Bitmap) {
+    private fun sendGroupTextImage(bmp: android.graphics.Bitmap, text: String) {
         Thread {
             try {
                 val f = TextImageUtil.save(this, bmp)
@@ -1294,7 +1294,7 @@ $guideStr
                     val cv = ContentValues().apply {
                         put("groupId", groupId)
                         put("aiId", "")
-                        put("content", "[图片]")
+                        put("content", "【文字图】" + text.take(300))
                         put("isFromMe", 1)
                         put("senderId", myId)
                         put("senderName", myName)
@@ -1310,7 +1310,7 @@ $guideStr
                 } catch (_: Exception) {}
                 runOnUiThread {
                     if (isDestroyed) return@runOnUiThread
-                    msgList.add(GroupMessage("[图片]", myId, myName, now, true, "", "", false, 0, fileUri, groupId = groupId))
+                    msgList.add(GroupMessage("【文字图】" + text.take(300), myId, myName, now, true, "", "", false, 0, fileUri, groupId = groupId))
                     adapter.notifyItemInserted(msgList.size - 1)
                     recyclerView.scrollToPosition(msgList.size - 1)
                 }
@@ -1395,7 +1395,9 @@ $guideStr
                         val imageDesc = hc.getString(3) ?: ""
                         val sName = hc.getString(1) ?: ""
                         val content = hc.getString(0) ?: ""
-                        if (imageDesc.isNotEmpty() && hc.getInt(2) == 1) {
+                        if (content.startsWith("【文字图】")) {
+                            tempList.add(0, "$sName: [发送了一张照片：" + content.removePrefix("【文字图】") + "]")
+                        } else if (imageDesc.isNotEmpty() && hc.getInt(2) == 1) {
                             tempList.add(0, "$sName: [发送了一张图片]")
                             // 找对应的msgList里的图片消息
                             msgList.lastOrNull { it.imageDesc == imageDesc }?.let { imageMessages.add(it) }
