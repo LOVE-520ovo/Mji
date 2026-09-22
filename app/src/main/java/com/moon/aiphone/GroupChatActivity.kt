@@ -1626,9 +1626,11 @@ ${if (groupContext.isEmpty()) "（群聊刚建立，还没有消息）" else gro
                     val transRaw = Regex("【(?:翻译|译)】(.*?)$", RegexOption.DOT_MATCHES_ALL).find(block)?.groupValues?.get(1)?.trim() ?: ""
                     val fullDialog = cleanDialogContent(rawDialog)
                     val tgRe = Regex("\\[TEXTIMG[:：]([^\\]]{1,800})\\]", RegexOption.IGNORE_CASE)
-                    val tgItems = tgRe.findAll(fullDialog).map { it.groupValues[1].trim() }.toList()
-                    val fullDialogText = if (tgItems.isEmpty()) fullDialog else fullDialog.replace(tgRe, "").trim()
-                    val trans = if (transRaw.length > fullDialog.length * 2) "" else transRaw
+                    val tgItems = tgRe.findAll(fullDialog).map { it.groupValues[1].trim() }.toList() +
+                        tgRe.findAll(transRaw).map { it.groupValues[1].trim() }.toList()
+                    val fullDialogText = if (tgRe.containsMatchIn(fullDialog)) fullDialog.replace(tgRe, "").trim() else fullDialog
+                    val transRawClean = if (tgRe.containsMatchIn(transRaw)) transRaw.replace(tgRe, "").trim() else transRaw
+                    val trans = if (transRawClean.length > fullDialog.length * 2) "" else transRawClean
 
                     if ((fullDialogText.length > 1 || tgItems.isNotEmpty()) && senderName.isNotEmpty()) {
                         // 忽略大小写匹配：英文名（如 kee/Kee/KEE）大小写不一致时不能把该角色的发言静默丢掉

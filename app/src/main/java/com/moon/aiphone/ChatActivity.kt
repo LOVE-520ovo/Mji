@@ -2227,7 +2227,7 @@ $interactiveFeatureRules
                         val parsed = parseReplyBlock(block, isChinese, keepActions = whisperOn)
                         val inner = parsed.inner
                         var dialog = processAiSpecialActions(parsed.dialog)
-                        val trans = parsed.trans
+                        val trans = processAiSpecialActions(parsed.trans)
 
                         // AI 自动引用：把模型输出的 [引用:xxx] 从正文里剥离，转成真正的引用卡片
                         var aiQuoteText = ""
@@ -3070,10 +3070,13 @@ ${if (survData.isNotEmpty()) "【你刚查到的她的真实动态】：\n$survD
                 // ★ 解析：和主回复用同一套宽容规则
                 val parsed = parseReplyBlock(replyContent, isChinese)
                 val inner = parsed.inner
-                val dialog = parsed.dialog
-                val trans = parsed.trans
+                val dialog = processAiSpecialActions(parsed.dialog)
+                val trans = processAiSpecialActions(parsed.trans)
 
-                if (dialog.isBlank()) return@Thread
+                if (dialog.isBlank()) {
+                    flushTextImages()
+                    return@Thread
+                }
                 // 过滤无意义的模型确认词，防止发出"check"/"ok"/"好的"等
                 val junkResponses = setOf("check", "ok", "okay", "好的", "收到", "明白", "知道了", "在的", "在")
                 if (dialog.length < 4 || junkResponses.contains(dialog.trim().lowercase())) return@Thread
