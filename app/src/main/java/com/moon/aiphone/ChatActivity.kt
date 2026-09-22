@@ -67,6 +67,7 @@ class ChatActivity : AppCompatActivity() {
 
     // ── 密语时刻 ─────────────────────────────────────────────────
     private var whisperMode = false
+    private val pendingTextImages = mutableListOf<String>()
     private val toyTagRegex = Regex("\\[TOY[:：]\\s*(STOP|停止|[0-9])\\s*\\]", RegexOption.IGNORE_CASE)
 
     // ★ 时间戳发号器：保证每条消息的 timestamp 唯一且递增，避免同毫秒撞车
@@ -185,88 +186,36 @@ class ChatActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun generateTextImage(text: String): Bitmap {
-        val W = 1080
-        val padX = 96
-        val padTop = 120
-        val padBottom = 150
-        val cardPad = 76
-        val maxTextW = W - padX * 2 - cardPad * 2
-        val body = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFFF5F5F7.toInt()
-            textSize = 50f
-            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-        }
-        val lines = mutableListOf<String>()
-        for (raw in text.split("\n")) {
-            if (raw.isEmpty()) { lines.add(""); continue }
-            var cur = ""
-            for (ch in raw) {
-                val t = cur + ch
-                if (body.measureText(t) > maxTextW && cur.isNotEmpty()) {
-                    lines.add(cur)
-                    cur = ch.toString()
-                } else {
-                    cur = t
-                }
-            }
-            if (cur.isNotEmpty()) lines.add(cur)
-        }
-        val lineH = body.textSize * 1.6f
-        val textH = (lines.size * lineH).toInt()
-        val cardH = textH + cardPad * 2
-        val H = (padTop + cardH + padBottom).coerceAtLeast(900)
-        val bmp = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
-        val c = Canvas(bmp)
-        c.drawRect(0f, 0f, W.toFloat(), H.toFloat(), Paint().apply {
-            shader = LinearGradient(0f, 0f, W.toFloat(), H.toFloat(),
-                0xFF0B0B0D.toInt(), 0xFF17171C.toInt(), Shader.TileMode.CLAMP)
-        })
-        fun glow(cx: Float, cy: Float, r: Float, a: Int) {
-            c.drawCircle(cx, cy, r, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                shader = RadialGradient(cx, cy, r,
-                    intArrayOf((a shl 24) or 0xFFFFFF, 0x00FFFFFF),
-                    floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
-            })
-        }
-        glow(W * 0.18f, H * 0.10f, W * 0.75f, 0x18)
-        glow(W * 0.92f, H * 0.60f, W * 0.70f, 0x10)
-        glow(W * 0.40f, H * 0.98f, W * 0.65f, 0x0C)
-        val left = padX.toFloat()
-        val top = padTop.toFloat()
-        val right = (W - padX).toFloat()
-        val bottom = (padTop + cardH).toFloat()
-        val radius = 58f
-        val rect = RectF(left, top, right, bottom)
-        c.drawRoundRect(rect, radius, radius, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x14FFFFFF })
-        c.drawRoundRect(rect, radius, radius, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 2.5f
-            shader = LinearGradient(left, top, right, bottom,
-                intArrayOf(0x5AFFFFFF.toInt(), 0x1AFFFFFF, 0x0DFFFFFF),
-                floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-        })
-        c.drawRoundRect(RectF(left + radius, top + 1.5f, right - radius, top + 3.5f), 2f, 2f,
-            Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                shader = LinearGradient(left + radius, 0f, right - radius, 0f,
-                    intArrayOf(0x00FFFFFF, 0x45FFFFFF.toInt(), 0x00FFFFFF),
-                    floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-            })
-        var y = top + cardPad + body.textSize
-        for (ln in lines) {
-            if (ln.isNotEmpty()) c.drawText(ln, left + cardPad, y, body)
-            y += lineH
-        }
-        val foot = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0x5AFFFFFF.toInt()
-            textSize = 32f
-        }
-        val label = "·"
-        c.drawText(label, W / 2f - foot.measureText(label) / 2f, H - padBottom * 0.45f, foot)
-        return bmp
+    private fun flushTextImages() {
+        if (pendingTextImages.isEmpty()) return
+        val imgs = pendingTextImages.toList()
+        pendingTextImages.clear()
+        imgs.forEach { sendAiTextImage(it) }
     }
 
-    // ── 转账（用户 → 角色）──────────────────────────────
+    private fun sendAiTextImage(text: String) {
+        Thread {
+            try {
+                val bmp = TextImageUtil.generate(text)
+                val f = TextImageUtil.save(this, bmp)
+                runOnUiThread {
+                    if (isDestroyed) return@runOnUiThread
+                    val imgMsg = Message("【我发了一张文字图：" + text.take(200) + "】", false, false, false).apply {
+                        imageDesc = f.absolutePath
+                        timestamp = nextTimestamp()
+                    }
+                    msgList.add(imgMsg)
+                    addMessageToWebView(imgMsg)
+                    saveMsgToDb(imgMsg, 0, "")
+                    sendBroadcast(Intent("CYBER_NEW_MSG"))
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    private fun generateTextImage(text: String): Bitmap = TextImageUtil.generate(text)
+
+ // ── 转账（用户 → 角色）──────────────────────────────
     private fun showTransferDialog() {
         runOnUiThread {
             val amountInput = EditText(this)
@@ -1807,6 +1756,11 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
             match.groupValues[1].toLongOrNull()?.let { declineShopPay(it) }
         }
         dialog = dialog.replace(shopDeclineRegex, "").trim()
+        val textImgRegex = Regex("\\[TEXTIMG[:：]([^\\]]{1,1000})\\]", RegexOption.IGNORE_CASE)
+        textImgRegex.findAll(dialog).toList().forEach { match ->
+            pendingTextImages.add(match.groupValues[1].trim())
+        }
+        dialog = dialog.replace(textImgRegex, "").trim()
         return dialog
     }
 
@@ -1958,6 +1912,7 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
 5. 金额必须为正数且最多两位小数。转账、红包应符合人设和对话情境，偶尔使用，不能每轮发送。所有标签必须保持英文大写格式。
 6. 当剧情自然发展到你想约用户线下见面时，可在【台词】末尾加入 [OFFLINE_INVITE:前情背景|地点|时间|氛围|希望用户扮演的身份]，例如 [OFFLINE_INVITE:最近总在深夜聊天|海边|深夜|暧昧拉扯|戴围巾的人]。系统会生成“推开门”邀请卡片，用户点击即可进入线下见面；符合情境时偶尔使用，不能每轮发送。
 7. 当用户在聊天里向你发来代付请求卡片（消息中会出现“[代付请求]…（编号XX）”），如果你愿意帮她付，在【台词】末尾加入 [SHOP_PAY_ACCEPT:编号]，例如 [SHOP_PAY_ACCEPT:3]；想明确拒绝时可以加 [SHOP_PAY_DECLINE:编号]。系统会更新卡片状态。不能每轮使用，要符合人设与你们的关系。
+8.你有“文字图”能力：把你想说的文字渲染成一张黑白玻璃质感的图片发出去。想发的时候，在【台词】末尾加入 [TEXTIMG:你想写的文字]，例如 [TEXTIMG:晚安，明天见]。当用户请求你发文字图/字卡时，要配合她发出；平时偶尔主动发一张（大约十几轮一次），不要频繁。
 """.trimIndent()
 
                 val systemPrompt = """
@@ -2071,6 +2026,15 @@ $interactiveFeatureRules
                         })
                     }
 
+                    // ── 文字图：请求响应 + 主动概率 ──
+                    val lastUserTextForCard = msgList.lastOrNull { it.isFromMe && !it.isSystem }?.content ?: ""
+                    val textCardRequested = TextImageUtil.isTextCardRequest(lastUserTextForCard)
+                    if (textCardRequested || (1..100).random() <= 10) {
+                        put(JSONObject().apply {
+                            put("role", "system")
+                            put("content", if (textCardRequested) "【用户请求】：用户在请求你发文字图/字卡。请配合她，在这次回复的【台词】末尾加入 [TEXTIMG:你想写的文字]（贴合语境与你的语气），把这张文字图发出去。" else "【本轮小提示】：你此刻刚好有点想发一张文字卡。如果愿意，可以在【台词】末尾加入 [TEXTIMG:你想写的文字]；不想发就正常回复，忽略这条提示。")
+                        })
+                    }
                     // 历史消息
                     val depth = sharedPref.getString("history_depth", "40")?.toIntOrNull()?.coerceIn(10, 40) ?: 40
                     val historyMsgs = mutableListOf<Message>()
@@ -2298,6 +2262,7 @@ $interactiveFeatureRules
 
                         if (dialog.isBlank()) {
                             toyCmds.forEach { execToyCommand(it) }
+                            flushTextImages()
                             continue
                         }
 
@@ -2313,6 +2278,7 @@ $interactiveFeatureRules
                         addMessageToWebView(aiMsg)
                         saveMsgToDb(aiMsg, 0, "")
                         toyCmds.forEach { execToyCommand(it) }
+                        flushTextImages()
                         emittedMessages++
                         maybeAiRecall(aiMsg)
                         MemoryManager.checkAndSummarizeMemory(this@ChatActivity, aiId, aiName)

@@ -340,10 +340,11 @@ class GroupChatActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setOnClickListener {
                 androidx.appcompat.app.AlertDialog.Builder(this@GroupChatActivity)
-                    .setItems(arrayOf("发送图片", "区间总结")) { _, which ->
+                    .setItems(arrayOf("发送图片", "文字图", "区间总结")) { _, which ->
                         when (which) {
                             0 -> pickGroupImage.launch(arrayOf("image/*"))
-                            1 -> startGroupIntervalSummary()
+                            1 -> showGroupTextImageDialog()
+                            2 -> startGroupIntervalSummary()
                         }
                     }
                     .show()
@@ -1232,6 +1233,91 @@ $guideStr
         }.start()
     }
 
+    private fun showGroupTextImageDialog() {
+        runOnUiThread {
+            val input = EditText(this)
+            input.hint = "写点什么…（一句话、一段话都行）"
+            input.setTextSize(16f)
+            input.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            input.minLines = 3
+            input.gravity = android.view.Gravity.TOP
+            val pad = dp(24)
+            val container = android.widget.FrameLayout(this)
+            container.setPadding(pad, pad / 2, pad, 0)
+            container.addView(input, android.widget.FrameLayout.LayoutParams(-1, -2))
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("🖤 文字图")
+                .setView(container)
+                .setPositiveButton("预览") { _, _ ->
+                    val text = input.text.toString().trim()
+                    if (text.isEmpty()) {
+                        Toast.makeText(this, "先写点文字", Toast.LENGTH_SHORT).show()
+                    } else {
+                        showGroupTextImagePreview(text)
+                    }
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
+    private fun showGroupTextImagePreview(text: String) {
+        Thread {
+            val bmp = try { TextImageUtil.generate(text) } catch (_: Exception) { null }
+            runOnUiThread {
+                if (bmp == null || isDestroyed) return@runOnUiThread
+                val iv = android.widget.ImageView(this)
+                iv.adjustViewBounds = true
+                iv.setImageBitmap(bmp)
+                val pad = dp(20)
+                iv.setPadding(pad, pad, pad, pad)
+                val scroll = android.widget.ScrollView(this)
+                scroll.addView(iv)
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("预览")
+                    .setView(scroll)
+                    .setPositiveButton("发送") { _, _ -> sendGroupTextImage(bmp) }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+        }.start()
+    }
+
+    private fun sendGroupTextImage(bmp: android.graphics.Bitmap) {
+        Thread {
+            try {
+                val f = TextImageUtil.save(this, bmp)
+                val fileUri = "file://" + f.absolutePath
+                val now = System.currentTimeMillis()
+                try {
+                    val db = DatabaseHelper(this).writableDatabase
+                    val cv = ContentValues().apply {
+                        put("groupId", groupId)
+                        put("aiId", "")
+                        put("content", "[图片]")
+                        put("isFromMe", 1)
+                        put("senderId", myId)
+                        put("senderName", myName)
+                        put("msgTime", SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now)))
+                        put("timestamp", now)
+                        put("translatedText", "")
+                        put("innerThoughts", "")
+                        put("isVoice", 0)
+                        put("voiceDuration", 0)
+                        put("imageDesc", fileUri)
+                    }
+                    db.insert("ChatHistory", null, cv)
+                } catch (_: Exception) {}
+                runOnUiThread {
+                    if (isDestroyed) return@runOnUiThread
+                    msgList.add(GroupMessage("[图片]", myId, myName, now, true, "", "", false, 0, fileUri, groupId = groupId))
+                    adapter.notifyItemInserted(msgList.size - 1)
+                    recyclerView.scrollToPosition(msgList.size - 1)
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
     private fun triggerAIReply() {
         if (isTriggering) return
         isTriggering = true
@@ -1433,6 +1519,7 @@ ${if (groupContext.isEmpty()) "（群聊刚建立，还没有消息）" else gro
 ...
 
 ⚠️ 再次强调：每个角色的回复必须独立，用 <|SPLIT|> 严格分隔。
+【文字图】：每个角色都可以发“文字卡”（会渲染成黑白玻璃质感的图片）。某个角色想发时，在该角色的【台词】末尾加入 [TEXTIMG:想写的文字]。用户请求发文字图/字卡时，让合适的角色配合发出；平时偶尔为之，不要频繁。该标签不显示在气泡里。
 """.trimIndent()
 
                 val messagesArray = JSONArray().apply {
@@ -1472,6 +1559,16 @@ ${if (groupContext.isEmpty()) "（群聊刚建立，还没有消息）" else gro
                         }
                     } catch (_: Exception) {}
                 }
+                // 文字图：请求响应 + 主动概率
+                val lastUserTextGc = msgList.lastOrNull { it.isFromMe }?.content ?: ""
+                val gcCardReq = TextImageUtil.isTextCardRequest(lastUserTextGc)
+                if (gcCardReq || (1..100).random() <= 10) {
+                    messagesArray.put(JSONObject().apply {
+                        put("role", "system")
+                        put("content", if (gcCardReq) "【用户请求】：群主在请求发文字图/字卡，请让至少一个角色在【台词】末尾加入 [TEXTIMG:内容]配合她发出。" else "【本轮小提示】：如果有角色正好想发一张文字卡，可以在其【台词】末尾加入 [TEXTIMG:内容]；不想发就正常回复。")
+                    })
+                }
+
                 val bodyJson = JSONObject().apply {
                     put("model", modelName)
                     put("temperature", 0.7)
@@ -1524,9 +1621,12 @@ ${if (groupContext.isEmpty()) "（群聊刚建立，还没有消息）" else gro
                         ?: Regex("【台词】(.*?)$", RegexOption.DOT_MATCHES_ALL).find(block)?.groupValues?.get(1)?.trim() ?: ""
                     val transRaw = Regex("【(?:翻译|译)】(.*?)$", RegexOption.DOT_MATCHES_ALL).find(block)?.groupValues?.get(1)?.trim() ?: ""
                     val fullDialog = cleanDialogContent(rawDialog)
+                    val tgRe = Regex("\\[TEXTIMG[:：]([^\\]]{1,800})\\]", RegexOption.IGNORE_CASE)
+                    val tgItems = tgRe.findAll(fullDialog).map { it.groupValues[1].trim() }.toList()
+                    val fullDialogText = if (tgItems.isEmpty()) fullDialog else fullDialog.replace(tgRe, "").trim()
                     val trans = if (transRaw.length > fullDialog.length * 2) "" else transRaw
 
-                    if (fullDialog.length > 1 && senderName.isNotEmpty()) {
+                    if ((fullDialogText.length > 1 || tgItems.isNotEmpty()) && senderName.isNotEmpty()) {
                         // 忽略大小写匹配：英文名（如 kee/Kee/KEE）大小写不一致时不能把该角色的发言静默丢掉
                         val cleanSender = senderName.trim()
                         val aiId = (speakers.find { it.second.trim().equals(cleanSender, ignoreCase = true) }
@@ -1535,7 +1635,7 @@ ${if (groupContext.isEmpty()) "（群聊刚建立，还没有消息）" else gro
                                         it.second.trim().contains(cleanSender, ignoreCase = true)
                             })?.first ?: continue  // 匹配失败直接跳过，不乱猜
 
-                        val sentences = fullDialog.split(Regex("(?<=[。！？；.!?])")).filter { it.trim().length > 1 }
+                        val sentences = fullDialogText.split(Regex("(?<=[。！？；.!?])")).filter { it.trim().length > 1 }
                         val msgCount = (1..3).random().coerceAtMost(sentences.size)
                         val selectedSentences = sentences.take(msgCount)
                         val transSentences = if (trans.isNotEmpty()) {
@@ -1584,6 +1684,40 @@ ${if (groupContext.isEmpty()) "（群聊刚建立，还没有消息）" else gro
                                 // 写入记忆宫殿，与私聊互通
                             }
                         }
+                        for (tc in tgItems) {
+                            try {
+                                val bmp = TextImageUtil.generate(tc)
+                                val f = TextImageUtil.save(this@GroupChatActivity, bmp)
+                                val nu = System.currentTimeMillis()
+                                val fUri = "file://" + f.absolutePath
+                                delay((300..700).random().toLong())
+                                withContext(Dispatchers.Main) {
+                                    try {
+                                        val wdb2 = DatabaseHelper(this@GroupChatActivity).writableDatabase
+                                        val cv2 = ContentValues().apply {
+                                            put("groupId", groupId)
+                                            put("aiId", aiId)
+                                            put("content", "【我发了一张文字图：" + tc.take(120) + "】")
+                                            put("isFromMe", 0)
+                                            put("senderId", aiId)
+                                            put("senderName", senderName)
+                                            put("msgTime", SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nu)))
+                                            put("timestamp", nu)
+                                            put("translatedText", "")
+                                            put("innerThoughts", "")
+                                            put("isVoice", 0)
+                                            put("voiceDuration", 0)
+                                            put("imageDesc", fUri)
+                                        }
+                                        wdb2.insert("ChatHistory", null, cv2)
+                                    } catch (_: Exception) {}
+                                    msgList.add(GroupMessage("【我发了一张文字图】", aiId, senderName, nu, false, "", "", false, 0, fUri, groupId = groupId))
+                                    adapter.notifyItemInserted(msgList.size - 1)
+                                    recyclerView.scrollToPosition(msgList.size - 1)
+                                }
+                            } catch (_: Exception) {}
+                        }
+
                         // 不同角色之间额外延迟
                         delay((500..1000).random().toLong())
                     }
