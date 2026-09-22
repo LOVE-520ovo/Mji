@@ -200,7 +200,7 @@ class ChatActivity : AppCompatActivity() {
                 val f = TextImageUtil.save(this, bmp)
                 runOnUiThread {
                     if (isDestroyed) return@runOnUiThread
-                    val imgMsg = Message("【我发了一张文字图：" + text.take(200) + "】", false, false, false).apply {
+                    val imgMsg = Message("【我发了一张照片：" + text.take(200) + "】", false, false, false).apply {
                         imageDesc = f.absolutePath
                         timestamp = nextTimestamp()
                     }
@@ -1912,7 +1912,7 @@ ${usedFields.joinToString("\n") { "$it=（内容）" }}
 5. 金额必须为正数且最多两位小数。转账、红包应符合人设和对话情境，偶尔使用，不能每轮发送。所有标签必须保持英文大写格式。
 6. 当剧情自然发展到你想约用户线下见面时，可在【台词】末尾加入 [OFFLINE_INVITE:前情背景|地点|时间|氛围|希望用户扮演的身份]，例如 [OFFLINE_INVITE:最近总在深夜聊天|海边|深夜|暧昧拉扯|戴围巾的人]。系统会生成“推开门”邀请卡片，用户点击即可进入线下见面；符合情境时偶尔使用，不能每轮发送。
 7. 当用户在聊天里向你发来代付请求卡片（消息中会出现“[代付请求]…（编号XX）”），如果你愿意帮她付，在【台词】末尾加入 [SHOP_PAY_ACCEPT:编号]，例如 [SHOP_PAY_ACCEPT:3]；想明确拒绝时可以加 [SHOP_PAY_DECLINE:编号]。系统会更新卡片状态。不能每轮使用，要符合人设与你们的关系。
-8.你有“文字图”能力：把你想说的文字渲染成一张黑白玻璃质感的图片发出去。想发的时候，在【台词】末尾加入 [TEXTIMG:你想写的文字]，例如 [TEXTIMG:晚安，明天见]。当用户请求你发文字图/字卡时，要配合她发出；平时偶尔主动发一张（大约十几轮一次），不要频繁。
+8.你有“发照片”的能力：想给她看某个画面/场景时（比如她说想看雪、想看看你那边，或你想分享某个瞬间），在【台词】末尾加入 [TEXTIMG:画面内容]，例如 [TEXTIMG:雪景] 或 [TEXTIMG:傍晚的窗台]，会发一张对应内容的照片给她。当用户请求你发照片/文字图时，要配合她发出；平时偶尔主动发一张（大约十几轮一次），不要频繁。
 """.trimIndent()
 
                 val systemPrompt = """
@@ -2032,7 +2032,7 @@ $interactiveFeatureRules
                     if (textCardRequested || (1..100).random() <= 10) {
                         put(JSONObject().apply {
                             put("role", "system")
-                            put("content", if (textCardRequested) "【用户请求】：用户在请求你发文字图/字卡。请配合她，在这次回复的【台词】末尾加入 [TEXTIMG:你想写的文字]（贴合语境与你的语气），把这张文字图发出去。" else "【本轮小提示】：你此刻刚好有点想发一张文字卡。如果愿意，可以在【台词】末尾加入 [TEXTIMG:你想写的文字]；不想发就正常回复，忽略这条提示。")
+                            put("content", if (textCardRequested) "【用户请求】：她似乎想让你给她发照片/画面。请配合她，在这次回复的【台词】末尾加入 [TEXTIMG:画面内容]（贴合语境，比如她想看雪就写雪景），把这张照片发出去；若她只是随口提到，忽略本条。" else "【本轮小提示】：你此刻刚好有点想给她发一张照片（某个画面/瞬间）。如果愿意，可以在【台词】末尾加入 [TEXTIMG:画面内容]；不想发就正常回复，忽略这条提示。")
                         })
                     }
                     // 历史消息

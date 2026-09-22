@@ -110,9 +110,9 @@ fun generate(text: String): Bitmap {
         return f
     }
 
-    /** 判断用户消息是否在请求文字图/字卡。 */
+    /** 判断用户消息是否在请求照片/文字图（文字图=照片语义）。 */
     fun isTextCardRequest(content: String): Boolean {
         if (content.isBlank()) return false
-        return listOf("文字图", "字卡", "文字卡").any { content.contains(it) }
+        return listOf("文字图", "字卡", "文字卡", "照片", "拍张", "拍个").any { content.contains(it) }
     }
 }

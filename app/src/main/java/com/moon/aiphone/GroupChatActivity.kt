@@ -1395,7 +1395,9 @@ $guideStr
                         val imageDesc = hc.getString(3) ?: ""
                         val sName = hc.getString(1) ?: ""
                         val content = hc.getString(0) ?: ""
-                        if (content.startsWith("【文字图】")) {
+                        if (content.startsWith("【我发了一张照片：")) {
+                            tempList.add(0, "$sName: [发送了一张照片：" + content.removePrefix("【我发了一张照片：").removeSuffix("】") + "]")
+                        } else if (content.startsWith("【文字图】")) {
                             tempList.add(0, "$sName: [发送了一张照片：" + content.removePrefix("【文字图】") + "]")
                         } else if (imageDesc.isNotEmpty() && hc.getInt(2) == 1) {
                             tempList.add(0, "$sName: [发送了一张图片]")
@@ -1521,7 +1523,7 @@ ${if (groupContext.isEmpty()) "（群聊刚建立，还没有消息）" else gro
 ...
 
 ⚠️ 再次强调：每个角色的回复必须独立，用 <|SPLIT|> 严格分隔。
-【文字图】：每个角色都可以发“文字卡”（会渲染成黑白玻璃质感的图片）。某个角色想发时，在该角色的【台词】末尾加入 [TEXTIMG:想写的文字]。用户请求发文字图/字卡时，让合适的角色配合发出；平时偶尔为之，不要频繁。该标签不显示在气泡里。
+【照片】：每个角色都可以发“照片”：想给群主看某个画面/场景时，在该角色的【台词】末尾加入 [TEXTIMG:画面内容]（如 [TEXTIMG:雪景]），会发一张对应内容的照片出去。群主请求看照片/发图（含文字图）时，让合适的角色配合发出；平时偶尔为之，不要频繁。该标签不显示在气泡里。
 """.trimIndent()
 
                 val messagesArray = JSONArray().apply {
@@ -1567,7 +1569,7 @@ ${if (groupContext.isEmpty()) "（群聊刚建立，还没有消息）" else gro
                 if (gcCardReq || (1..100).random() <= 10) {
                     messagesArray.put(JSONObject().apply {
                         put("role", "system")
-                        put("content", if (gcCardReq) "【用户请求】：群主在请求发文字图/字卡，请让至少一个角色在【台词】末尾加入 [TEXTIMG:内容]配合她发出。" else "【本轮小提示】：如果有角色正好想发一张文字卡，可以在其【台词】末尾加入 [TEXTIMG:内容]；不想发就正常回复。")
+                        put("content", if (gcCardReq) "【用户请求】：群主似乎想看照片/画面（含文字图）。请让至少一个角色在【台词】末尾加入 [TEXTIMG:画面内容]配合她；若她只是随口提到，忽略本条。" else "【本轮小提示】：如果有角色正好想发一张照片（某个画面/瞬间），可以在其【台词】末尾加入 [TEXTIMG:画面内容]；不想发就正常回复。")
                     })
                 }
 
@@ -1699,7 +1701,7 @@ ${if (groupContext.isEmpty()) "（群聊刚建立，还没有消息）" else gro
                                         val cv2 = ContentValues().apply {
                                             put("groupId", groupId)
                                             put("aiId", aiId)
-                                            put("content", "【我发了一张文字图：" + tc.take(120) + "】")
+                                            put("content", "【我发了一张照片：" + tc.take(120) + "】")
                                             put("isFromMe", 0)
                                             put("senderId", aiId)
                                             put("senderName", senderName)
@@ -1713,7 +1715,7 @@ ${if (groupContext.isEmpty()) "（群聊刚建立，还没有消息）" else gro
                                         }
                                         wdb2.insert("ChatHistory", null, cv2)
                                     } catch (_: Exception) {}
-                                    msgList.add(GroupMessage("【我发了一张文字图】", aiId, senderName, nu, false, "", "", false, 0, fUri, groupId = groupId))
+                                    msgList.add(GroupMessage("【我发了一张照片】", aiId, senderName, nu, false, "", "", false, 0, fUri, groupId = groupId))
                                     adapter.notifyItemInserted(msgList.size - 1)
                                     recyclerView.scrollToPosition(msgList.size - 1)
                                 }
