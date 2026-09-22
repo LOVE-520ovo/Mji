@@ -33,6 +33,8 @@ class MemoryDetailActivity : AppCompatActivity() {
     private val tabMiscTreasure by lazy { findViewById<TextView>(R.id.tabMiscTreasure) }
     private val tabKeyEvent by lazy { findViewById<TextView>(R.id.tabKeyEvent) }
     private val tabTimeline by lazy { findViewById<TextView>(R.id.tabTimeline) }
+    private val tabInterval by lazy { findViewById<TextView>(R.id.tabInterval) }
+    private val tabAiLife by lazy { findViewById<TextView>(R.id.tabAiLife) }
     private val rvMemoryList by lazy { findViewById<RecyclerView>(R.id.rvMemoryList) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,13 +64,15 @@ class MemoryDetailActivity : AppCompatActivity() {
         tabMiscTreasure.setOnClickListener { switchTab("misc_treasure", tabMiscTreasure) }
         tabKeyEvent.setOnClickListener { switchTab("key_event", tabKeyEvent) }
         tabTimeline.setOnClickListener { switchTab("timeline", tabTimeline) }
+        tabInterval.setOnClickListener { switchTab("interval", tabInterval) }
+        tabAiLife.setOnClickListener { switchTab("ai_life", tabAiLife) }
 
         switchTab("user_info", tabUserInfo)
     }
 
     private fun switchTab(category: String, tab: TextView) {
         currentCategory = category
-        listOf(tabUserInfo, tabSharedEvent, tabFuturePlan, tabMiscTreasure, tabKeyEvent, tabTimeline).forEach {
+        listOf(tabUserInfo, tabSharedEvent, tabFuturePlan, tabMiscTreasure, tabKeyEvent, tabTimeline, tabInterval, tabAiLife).forEach {
             it.setTextColor(android.graphics.Color.parseColor("#999999"))
             it.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         }
@@ -105,6 +109,8 @@ class MemoryDetailActivity : AppCompatActivity() {
             emptyTv.text = when (currentCategory) {
                 "timeline" -> "还没有时间线记忆\n聊满30条消息后自动生成"
                 "key_event" -> "还没有关键事件记忆\n聊到重要时刻自动记录"
+                "interval" -> "还没有区间总结记忆\n在聊天设置里用「区间总结」生成"
+                "ai_life" -> "还没有角色日常记录\n聊天中自动积累"
                 else -> "此分类暂无记忆\n点右上角＋手动添加，或切换其他标签查看"
             }
         } else {
@@ -319,6 +325,8 @@ class MemoryDetailActivity : AppCompatActivity() {
         "misc_treasure" -> "珍贵碎片"
         "key_event" -> "关键时刻"
         "timeline" -> "时间线"
+        "interval" -> "区间总结"
+        "ai_life" -> "角色日常"
         else -> category
     }
 

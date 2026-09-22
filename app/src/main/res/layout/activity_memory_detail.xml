@@ -137,6 +137,30 @@
                 android:textSize="14sp"
                 android:background="@android:color/transparent"
                 android:paddingHorizontal="16dp"
+                android:paddingVertical="8dp"
+                android:layout_marginEnd="8dp" />
+            <!-- 新增：区间总结tab（手动生成） -->
+            <TextView
+                android:id="@+id/tabInterval"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📜 区间总结"
+                android:textColor="#999999"
+                android:textSize="14sp"
+                android:background="@android:color/transparent"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="8dp"
+                android:layout_marginEnd="8dp" />
+            <!-- 新增：角色日常tab（ai_life自动生成） -->
+            <TextView
+                android:id="@+id/tabAiLife"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🌙 角色日常"
+                android:textColor="#999999"
+                android:textSize="14sp"
+                android:background="@android:color/transparent"
+                android:paddingHorizontal="16dp"
                 android:paddingVertical="8dp" />
 
         </LinearLayout>
