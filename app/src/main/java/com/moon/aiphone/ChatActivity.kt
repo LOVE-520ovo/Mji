@@ -3194,7 +3194,7 @@ ${if (survData.isNotEmpty()) "【你刚查到的她的真实动态】：\n$survD
         val imgDesc = msg.imageDesc ?: ""
         //文字图：本质上是文字卡，但角色视角=一张内容为该文字的照片
         if (msg.isFromMe && msg.content.startsWith("【文字图】")) {
-            arr.put(JSONObject().apply { put("role", role); put("content", "$timeTag我发了一张照片：" + msg.content.removePrefix("【文字图】")) })
+            arr.put(JSONObject().apply { put("role", role); put("content", "${timeTag}我发了一张照片：" + msg.content.removePrefix("【文字图】")) })
             return
         }
         val looksLikePhoto = msg.isFromMe &&
